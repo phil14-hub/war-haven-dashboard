@@ -1,0 +1,36 @@
+name: Update clan dashboard
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: war-haven-clan-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    # Deliberately off until the owner has configured and approved the API route.
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Refresh and publish encrypted clan data
+        env:
+          COC_API_TOKEN: ${{ secrets.COC_API_TOKEN }}
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
+          CLAN_API_ROUTE: ${{ vars.CLAN_API_ROUTE }}
+        run: python github_collector.py

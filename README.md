@@ -24,6 +24,10 @@ The initial publication contains an **empty baseline** because actual collected 
 
 GitHub commits retain previous encrypted revisions. The collector refuses to overwrite history it could not read and refuses a conflicting update from another collector. A failed cloud sync keeps local records intact. Local files remain available as an offline safety copy.
 
+## Automatic updates on GitHub
+
+The **Update clan dashboard** Actions workflow supports hourly collection and a manual **Run workflow** option. It is installed inactive. See [the one-time setup](AUTOMATIC_UPDATES.md) before enabling it. No API keys or passwords belong in source files.
+
 ## Daily use
 
 Run the script when you want fresh data. It saves history on GitHub and updates the same website URL. Capture regular-war results after a war ends and before starting the next war. The website itself displays the last published snapshot.
@@ -41,7 +45,7 @@ Useful arguments:
 --watch 300        Collect and publish while Python stays running.
 ```
 
-This version does not add AI or unattended cloud collection. iOS may suspend Pyto in the background, and the Clash API still requires an allowed outgoing IP for the collector.
+This version does not add AI. For unattended collection on GitHub, see [AUTOMATIC_UPDATES.md](AUTOMATIC_UPDATES.md). The prepared workflow remains inactive until its secrets, API route, and enable variable are configured. Pyto collection still requires an allowed outgoing IP, and iOS may suspend it in the background.
 
 ## Data coverage
 
