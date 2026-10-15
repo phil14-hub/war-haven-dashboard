@@ -1,0 +1,28 @@
+# Credentials and device-local setup
+coc_token*.txt
+*api_key*.txt
+dashboard_website*.json
+.env
+.env.*
+*Access*.txt
+*access*.txt
+*.pem
+
+# Raw clan data and exports: only the encrypted archive belongs in Git
+war_tracker_state.json*
+tracker_state.json*
+war_tracker_changes.json*
+war_tracker.html
+clan_war_roster.csv
+war_lineup_*.txt
+weekly_clan_report_*.txt
+recruiting_candidates.html
+*.csv
+
+# Runtime files
+__pycache__/
+*.pyc
+*.tmp
+*.bak
+.DS_Store
+.private/
