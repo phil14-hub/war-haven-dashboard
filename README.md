@@ -26,7 +26,9 @@ GitHub commits retain previous encrypted revisions. The collector refuses to ove
 
 ## Automatic updates on GitHub
 
-The **Update clan dashboard** Actions workflow supports hourly collection and a manual **Run workflow** option. It is installed inactive. See [the one-time setup](AUTOMATIC_UPDATES.md) before enabling it. No API keys or passwords belong in source files.
+The **Update clan dashboard** Actions workflow supports daily collection at **7:23 AM Mountain time** and a manual **Run workflow** option. The website's **Refresh data** button links to the authenticated GitHub updater. It is installed inactive. See [the one-time setup](AUTOMATIC_UPDATES.md) before enabling it. No API keys or passwords belong in source files.
+
+The gear opens real Settings with persistent browser preferences. Preparation wars have a live start countdown and switch to **In progress** without a new scan. Password changes are under **Leader settings** and require both the current dashboard password and GitHub owner authorization; the co-leader password alone cannot change shared access.
 
 ## Daily use
 

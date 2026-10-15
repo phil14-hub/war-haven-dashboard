@@ -3,7 +3,8 @@ name: Update clan dashboard
 on:
   workflow_dispatch:
   schedule:
-    - cron: '23 * * * *'
+    - cron: '23 7 * * *'
+      timezone: America/Denver
 
 permissions:
   contents: read
@@ -13,6 +14,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  setup-needed:
+    if: github.event_name == 'workflow_dispatch' && vars.CLAN_AUTO_UPDATES_ENABLED != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain the remaining setup
+        run: |
+          echo '## Automatic updates need one-time setup' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Add the Actions secrets and variables described in AUTOMATIC_UPDATES.md, then run this workflow again.' >> "$GITHUB_STEP_SUMMARY"
+          echo '::error::Automatic updates are not enabled. Complete AUTOMATIC_UPDATES.md before running the collector.'
+          exit 1
   update:
     # Deliberately off until the owner has configured and approved the API route.
     if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'

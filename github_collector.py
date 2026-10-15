@@ -51,6 +51,11 @@ def run(env=None, tracker=None):
     candidate = copy.deepcopy(state)
     tracker.refresh(candidate, tracker.OfficialAPI([env['COC_API_TOKEN'].strip()]))
     candidate['website'] = {'protected': True, 'configured': True, 'historyStored': True}
+    candidate['automaticUpdates'] = {
+        'lastRunAt': tracker.now_iso(),
+        'schedule': '23 7 * * *',
+        'timezone': 'America/Denver',
+    }
     # Only an encrypted HTML file is written; state stays in memory.
     with tempfile.TemporaryDirectory(prefix='war-haven-') as directory:
         dashboard = Path(directory) / 'index.html'
