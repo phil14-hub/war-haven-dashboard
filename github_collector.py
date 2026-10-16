@@ -121,5 +121,8 @@ if __name__ == '__main__':
     except Exception as error:
         # Never dump an API response, credential value or state into public logs.
         print('Update stopped safely (' + type(error).__name__ + ').')
+        if type(error).__name__ == 'PublishError':
+            # PublishError contains only tracker-authored diagnostics, never an API body.
+            print('Publishing detail: ' + str(error))
         print('Check the configured secrets, API route/IP and Pages permissions. Existing published history was not deliberately replaced with an empty archive.')
         raise SystemExit(1)
