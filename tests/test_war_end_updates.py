@@ -16,6 +16,7 @@ import Clash_War_Tracker as tracker
 import github_collector
 import github_war_check
 import war_end_updates as timing
+import shared_actions
 
 NOW = datetime(2030, 1, 1, 12, tzinfo=timezone.utc)
 
@@ -105,6 +106,11 @@ class TimingTests(unittest.TestCase):
 
 
 class GateTests(unittest.TestCase):
+    def setUp(self):
+        guard = patch.object(shared_actions, 'ENABLED', False)
+        guard.start()
+        self.addCleanup(guard.stop)
+
     def invoke(self, state, now, *, wait=False, sleep=lambda seconds: None):
         fake = SimpleNamespace(DEFAULT_CLAN_TAG=tracker.DEFAULT_CLAN_TAG,
                                decrypt_history=lambda envelope, password: state)
@@ -139,6 +145,11 @@ class GateTests(unittest.TestCase):
 
 
 class CollectorTests(unittest.TestCase):
+    def setUp(self):
+        guard = patch.object(shared_actions, 'ENABLED', False)
+        guard.start()
+        self.addCleanup(guard.stop)
+
     ENV = {'COC_API_TOKEN': 'fixture-key', 'DASHBOARD_PASSWORD': 'fixture-passphrase',
            'DASHBOARD_PUBLISH_TOKEN': 'fixture-token',
            'GITHUB_REPOSITORY': 'phil14-hub/war-haven-dashboard'}

@@ -15,13 +15,14 @@ const edits={notes:{'#P0Y':{text:'original'}}},context={data:{clanTag:'#P0Y',sha
  }
  throw Error(path);
 }};
-let source=fs.readFileSync('shared_dashboard.js','utf8').replace('return {start,changed};','return {start,changed,encrypt,decrypt,flush,accept,pending,updateProgress};');
+let source=fs.readFileSync('shared_dashboard.js','utf8').replace('return {start,changed};','return {start,changed,encrypt,decrypt,flush,accept,pending,updateProgress,seedDrafts};');
 const app=vm.runInNewContext(source+';SharedDashboardSync',context);
 (async()=>{
  const clear={category:'notes',key:'#P0Y',value:{text:'Shared fixture'}};
  const envelope=await app.encrypt(clear);assert.equal((await app.decrypt(envelope)).value.text,'Shared fixture');
  const corrupt={...envelope,tag:Buffer.alloc(32).toString('base64')};await assert.rejects(app.decrypt(corrupt));
  const id=Buffer.from(await webcrypto.subtle.sign('HMAC',await webcrypto.subtle.importKey('raw',raw.subarray(32),{name:'HMAC',hash:'SHA-256'},false,['sign']),new TextEncoder().encode('notes:#P0Y'))).toString('hex');
+ context.data.edits={notes:{'#P0Y':{text:'original'}}};app.seedDrafts();assert.equal(app.pending.size,0);edits.notes['#P0Y']={text:'Legacy local draft'};app.seedDrafts();assert.equal(app.pending.size,1);app.pending.clear();
  app.accept({id,revision:'r1',updatedAt:'2030-01-01T00:00:00Z'},clear);
  edits.notes['#P0Y']={text:'My local draft'};app.changed('notes','#P0Y',edits.notes['#P0Y']);
  server={id,kind:'notes',revision:'r2',operationId:'other-leader',updatedAt:'2030-01-01T00:01:00Z',envelope:await app.encrypt({...clear,value:{text:'Their edit'}})};

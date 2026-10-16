@@ -1,6 +1,6 @@
 # Encrypted shared actions
 
-The supporting service is deployed at https://war-haven-actions.readydrake18.chatgpt.site with owner-only hosting access. `shared_actions.ENABLED` is false until the owner explicitly authorizes the service to be reachable by co-leaders at the existing GitHub Pages dashboard. This keeps existing controls functional while the new access decision is pending.
+The supporting service is deployed at https://war-haven-actions.readydrake18.chatgpt.site with owner-only hosting access. This activation branch sets `shared_actions.ENABLED` to true and is held for the owner’s explicit decision to make the API reachable by co-leaders at the existing GitHub Pages dashboard. Merge only after that hosting access is configured. The dashboard passphrase still authorizes every shared data and update operation.
 
 ## Behavior when enabled
 

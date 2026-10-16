@@ -19,6 +19,9 @@ import github_collector
 import shared_actions
 
 class DashboardTests(unittest.TestCase):
+ def setUp(self):
+  guard=patch.object(shared_actions,'ENABLED',False);guard.start();self.addCleanup(guard.stop)
+
  def test_browser_cipher_is_verified_by_the_cloud_collector(self):
   result=subprocess.run(['node','tests/shared_dashboard.test.cjs'],cwd=ROOT,text=True,capture_output=True,check=True)
   fixture=json.loads(result.stdout)
@@ -54,6 +57,21 @@ class DashboardTests(unittest.TestCase):
    import github_recruitment_collector as recruitment
    with contextlib.redirect_stdout(io.StringIO()):recruitment.run(helper.ENV,fake)
   self.assertEqual(calls,[]);self.assertEqual(published[0]['recruiter'],{'version':'next'})
+
+ def test_recruitment_request_wakes_the_watcher_without_a_due_war(self):
+  from test_war_end_updates import GateTests,fixture,NOW
+  from datetime import timedelta
+  with patch.object(shared_actions,'ENABLED',True),patch.object(shared_actions,'Client'),patch.object(shared_actions,'pending',side_effect=lambda client,kind:{'id':'recruit'} if kind=='recruitment' else None):
+   self.assertTrue(GateTests().invoke(fixture(end=NOW+timedelta(hours=12)),lambda:NOW))
+
+ def test_recruitment_request_routes_to_only_its_collector_before_a_future_war(self):
+  from test_war_end_updates import CollectorTests,fixture
+  from datetime import datetime,timedelta,timezone
+  helper=CollectorTests();fake,published,calls=helper.fake_tracker(fixture(end=datetime.now(timezone.utc)+timedelta(hours=12)))
+  recruitment=SimpleNamespace(run=lambda env,module:{'kind':'recruitment'})
+  with patch.object(shared_actions,'ENABLED',True),patch.object(shared_actions,'Client'),patch.object(shared_actions,'pending',side_effect=lambda client,kind:{'id':'recruit'} if kind=='recruitment' else None),patch.dict(sys.modules,{'github_recruitment_collector':recruitment}),contextlib.redirect_stdout(io.StringIO()):
+   result=github_collector.run(helper.ENV,fake,post_war=True)
+  self.assertEqual(result,{'kind':'recruitment'});self.assertEqual(calls,[]);self.assertEqual(published,[])
 
  def test_generated_javascript_is_valid_and_native_recruitment_has_no_frame(self):
   from html.parser import HTMLParser
