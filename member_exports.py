@@ -135,7 +135,7 @@ def build_snapshot(state, tracker):
         comparisons.append({'tag': tag, 'name': view['name'], 'townHallLevel': view['townHallLevel'], 'leaguePoints': league.get('points'),
                             'seasonDonations': view['seasonDonations'], 'capitalGold': capital, 'warStars': stats['stars'] if stats['attacks'] else None,
                             'raidLoot': view['raidLoot'], 'attackUse': stats['used'] / stats['allowed'] if stats['allowed'] else None})
-    return {'version': 1, 'updatedAt': at, 'clan': {'tag': state['clanTag'], 'name': state.get('clanName') or 'War Haven', 'level': clan.get('clanLevel')},
+    return {'version': 1, 'updatedAt': at, 'clan': {'tag': state['clanTag'], 'name': state.get('clanName') or 'War Haven', 'level': clan.get('clanLevel'), 'badgeUrl': tracker.clan_badge_url(clan)},
             'members': members, 'comparisons': comparisons}
 
 
