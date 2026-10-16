@@ -1865,6 +1865,7 @@ def candidate_row(rec, now=None):
         "freshness": freshness_label(detected, now=now),
         "detectedAgo": age_text(detected, now=now),
         "leftWithin": human_duration(window),
+        "observationWindowSeconds": window,
         "previousRosterAt": rec.get("previousRosterAt", ""),
         "detectedAt": detected or "",
         "firstClanlessVerifiedAt": first_clanless or "",
@@ -2410,6 +2411,10 @@ applyFilters();
 </html>"""
 
     path.write_text(document, encoding="utf-8")
+    native = {'version': 1, 'updatedAt': run_stats.get('runFinishedAt'),
+              'groups': {key: [clean_row(row) for row in groups[key]] for key in ('new', 'still', 'joined_my', 'no_longer')},
+              'turnover': turnover, 'stats': run_stats, 'filters': filters}
+    path.with_suffix('.json').write_text(json.dumps(native, ensure_ascii=False), encoding='utf-8')
 
 
 # ---------------------------------------------------------------------------

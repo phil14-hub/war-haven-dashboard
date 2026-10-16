@@ -56,3 +56,9 @@ The existing `CLAN_AUTO_UPDATES_ENABLED` switch pauses the combined workflow.
 The existing workflow concurrency group and archive revision check protect
 against overlapping publications. Source is `Clash_Recruitment.py` (version 4.5);
 `github_recruiter.py` supplies encrypted restore/save and a noninteractive run.
+
+## Integrated dashboard and independent scans
+
+The recruitment view now renders native dashboard cards, filters, verification details and a collapsible clan-turnover table. It shares the dashboard’s scrolling and navigation. Matching Town Hall images sit beside player names. Scroll reveals respect reduced-motion preferences. New scans include structured display data; older saved HTML reports are read as data without executing their markup or scripts.
+
+Recruitment collection runs independently through `.github/workflows/update-recruitment.yml`, daily around 7:35 AM America/Denver or manually. Clan updates, including the post-war capture, retain the last recruitment report. Once the shared action service is enabled, the recruitment button submits only a recruitment request and shows its own estimate/progress.

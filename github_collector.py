@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from war_end_updates import next_update, record_update
+import shared_actions
 from datetime import datetime, timezone
 
 
@@ -52,16 +53,33 @@ def run(env=None, tracker=None, *, post_war=False):
     # Verify and restore the latest archive before asking Clash for new data.
     # Any decryption/download failure aborts without a publication.
     tracker.pull_github_history(state, config)
-    if post_war:
+    client = shared_actions.Client(config['password'])
+    shared_request = None
+    if shared_actions.ENABLED:
+        shared_request = shared_actions.pending(client, 'clan')
+        if post_war and shared_request is None and (next_update(state) is None or next_update(state) > datetime.now(timezone.utc)) and shared_actions.pending(client, 'recruitment'):
+            import github_recruitment_collector
+            return github_recruitment_collector.run(env, tracker)
+    if post_war and shared_request is None:
         due = next_update(state)
         if due is None or due > datetime.now(timezone.utc):
             print('The latest archive has no pending final-war update. No duplicate collection needed.')
             return {'published': False, 'skipped': True}
+    request = shared_actions.UpdateRequest(client, 'clan', shared_request)
+    request.claim()
+    try:
+        return collect(env, tracker, config, route, state, post_war=post_war and shared_request is None, request=request)
+    except Exception:
+        request.finish()
+        raise
+
+
+def collect(env, tracker, config, route, state, *, post_war, request):
     candidate = copy.deepcopy(state)
+    if shared_actions.ENABLED:
+        shared_actions.pull(candidate, request.client, tracker)
+    request.progress('collecting', 20)
     tracker.refresh(candidate, tracker.OfficialAPI([env['COC_API_TOKEN'].strip()]))
-    if not post_war:
-        import github_recruiter
-        github_recruiter.refresh(candidate, env, API_ROUTES[route])
     candidate['website'] = {'protected': True, 'configured': True, 'historyStored': True}
     candidate['automaticUpdates'] = {**candidate.get('automaticUpdates', {}),
         'lastRunAt': tracker.now_iso(),
@@ -72,13 +90,16 @@ def run(env=None, tracker=None, *, post_war=False):
     final_schedule = record_update(candidate)
     print('Automatic final-war follow-up armed from a recorded end time.'
           if final_schedule['nextUpdateAt'] else 'No pending final-war follow-up in the saved data.')
+    request.progress('publishing', 75)
     # Only an encrypted HTML file is written; state stays in memory.
     with tempfile.TemporaryDirectory(prefix='war-haven-') as directory:
         dashboard = Path(directory) / 'index.html'
         tracker.write_dashboard(candidate, dashboard, password=config['password'])
-        result = tracker.publish_dashboard(config, dashboard, state=candidate)
+        request.progress('deploying', 90)
+        result = tracker.publish_dashboard(config, dashboard, state=candidate, **({'wait_seconds': 180} if request.lease else {}))
     print('Encrypted dashboard and history updated.' if result['published']
           else 'Encrypted update uploaded; GitHub Pages is still deploying.')
+    request.finish(result)
     return result
 
 

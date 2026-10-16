@@ -68,12 +68,15 @@ def scan(previous, token, api_root, clan_tag, *, module=None, max_clans=1000):
         document = module.DEFAULT_HTML.read_text(encoding='utf-8')
         if not document.startswith('<!doctype html>') or 'War Haven Recruiter' not in document:
             raise ValueError('The recruiter did not produce a valid report.')
+        native = json.loads(module.DEFAULT_HTML.with_suffix('.json').read_text(encoding='utf-8'))
+        if native.get('version') != 1 or not isinstance(native.get('groups'), dict):
+            raise ValueError('The recruiter did not produce valid dashboard data.')
         updated = stats.get('runFinishedAt')
         if not updated:
             raise ValueError('The recruiter scan did not finish.')
         return {
             'format': 1, 'updatedAt': updated, 'files': retained,
-            'report': {'html': document, 'updatedAt': updated, 'source': 'GitHub daily collector'},
+            'report': {**native, 'html': document, 'updatedAt': updated, 'source': 'Independent cloud recruitment scan'},
             'summary': {
                 'updatedAt': updated, 'baselineCreated': bool(stats.get('baselineCreated')),
                 'trackedClans': stats.get('trackedClanCount', 0),

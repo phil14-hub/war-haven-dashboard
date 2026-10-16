@@ -1,0 +1,49 @@
+name: Update recruitment
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'shared_actions.py'
+      - 'Clash_Recruitment.py'
+      - 'github_recruiter.py'
+      - 'github_recruitment_collector.py'
+      - '.github/workflows/update-recruitment.yml'
+  schedule:
+    - cron: '35 7 * * *'
+      timezone: America/Denver
+
+permissions:
+  contents: read
+
+concurrency:
+  group: war-haven-clan-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Read the latest shared archive
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install recruiter dependency
+        run: python -m pip install --disable-pip-version-check requests==2.34.2
+      - name: Refresh and publish recruitment only
+        env:
+          COC_API_TOKEN: ${{ secrets.COC_API_TOKEN }}
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
+          CLAN_API_ROUTE: ${{ vars.CLAN_API_ROUTE }}
+          RECRUITER_ENABLED: ${{ vars.RECRUITER_ENABLED }}
+          RECRUITER_MAX_CLANS: ${{ vars.RECRUITER_MAX_CLANS }}
+        run: python github_recruitment_collector.py

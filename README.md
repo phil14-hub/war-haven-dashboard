@@ -26,13 +26,11 @@ GitHub commits retain previous encrypted revisions. The collector refuses to ove
 
 ## Automatic updates on GitHub
 
-The [recruiter](RECRUITER.md) now runs with the daily dashboard update, using the
-existing secrets and approved API route. Its navy/gold report appears under
-**Manage > Recruiter**. The first cloud scan establishes a baseline, and later
-scans detect and verify departures. Recruiter history is retained in the same
-encrypted clan archive. Invitations remain manual.
+Clan and recruitment collection run independently. **Update clan dashboard** collects clan, war, member and Capital data at about **7:23 AM Mountain time**. **Update recruitment** scans tracked clans at about **7:35 AM Mountain time**. Each also has its own manual workflow. Their shared publication lock protects the encrypted archive; it does not cause one collector to run when the other does.
 
-The **Update clan dashboard** Actions workflow supports daily collection at **7:23 AM Mountain time** and a manual **Run workflow** option. **Refresh data > Start update here** also starts and monitors an update from the website using a private repository-owner token with **Actions: read and write**. The token is used in memory for that request and is not saved in browser storage. Both routes run on GitHub, so the phone can be off after a request is accepted. See [the one-time setup](AUTOMATIC_UPDATES.md) for credentials and permissions. No API keys or passwords belong in source files.
+**Management → Recruiter** is part of the dashboard, with native cards, search and filters, candidate history and clan turnover. Cards reveal gently as they scroll into view and respect reduced-motion settings. Town Hall 1–18 images appear beside player names across roster, lineup, contribution and recruiting cards. **Management → How to Use** explains the dashboard for first-time leaders.
+
+The encrypted shared-saving and token-free update service is implemented and privately deployed. It remains disabled in `shared_actions.py` pending the owner’s explicit hosting audience decision. Once enabled, dashboard passphrase access authorizes encrypted shared notes/plans and separate clan/recruitment requests. Each request has an estimated duration, a progress bar and confirmed publication at 100%. Provider credentials remain in GitHub Actions. Password changes still require owner authorization. See [shared actions](SHARED_ACTIONS.md).
 
 The gear opens real Settings with persistent browser preferences. Preparation wars have a live start countdown and switch to **In progress** without a new scan. Password changes are under **Leader settings** and require both the current dashboard password and GitHub owner authorization; the co-leader password alone cannot change shared access.
 
@@ -50,7 +48,7 @@ finish before searching for the next regular war. See
 
 Run the script when you want fresh data. It saves history on GitHub and updates the same website URL. Capture regular-war results after a war ends and before starting the next war. The website itself displays the last published snapshot.
 
-All authorized viewers can unlock the site with the shared passphrase. Viewing does not grant repository write access. Notes and lineup edits made in a browser still need **Manage → Save changes / backup**, followed by import on the collector device, before they appear in the next shared publication. GitHub Pages is a snapshot host, not a shared-editing backend.
+All authorized viewers can unlock the site with the shared passphrase. Viewing does not grant repository write access. Until shared saving is enabled, notes and lineup edits need **Management → Save changes / backup** and import to reach other devices. Once enabled, notes and lineup drafts save automatically to encrypted shared records; other edit types still need backups. GitHub Pages serves the encrypted snapshots and the separate service handles shared actions.
 
 Useful arguments:
 
@@ -73,4 +71,6 @@ Never commit `coc_token.txt`, `dashboard_website.json`, plaintext state files, b
 
 The bundled AES fallback is pyaes 1.6.1, copyright 2014 Richard Moore, MIT licensed. Its original license is retained in the single-file source.
 
-Validation completed locally: 36 Python tests plus JavaScript calculations and desktop/mobile browser flows. Tests cover encryption/decryption, wrong passwords, tampering, old/new history merges, conflict handling, password rotation, navigation, reports, profiles, lineups, exports and backup imports. Test fixture files are kept out of the published repository.
+Current checks: 28 Python tests, including actual generated JavaScript syntax, independent collector behavior, viewer-local times, hover dismissal, archive continuity and browser/cloud encryption interoperability. JavaScript checks cover concurrent shared edits, retained drafts, idempotent retry, progress completion, password proofs, CORS and separate update queues. Browser visual QA was unavailable in this environment.
+
+Town Hall images are bundled from [ClashKingAssets](https://github.com/ClashKingInc/ClashKingAssets/tree/main/assets/buildings/home-village/town_hall), so the dashboard does not fetch them from a third-party host at view time. Clash of Clans assets belong to Supercell.

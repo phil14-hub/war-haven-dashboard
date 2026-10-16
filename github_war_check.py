@@ -8,6 +8,7 @@ import time
 
 from github_collector import load_tracker
 from war_end_updates import next_update
+import shared_actions
 
 
 def check(env=None, *, wait=False, now=None, sleep=time.sleep):
@@ -20,6 +21,14 @@ def check(env=None, *, wait=False, now=None, sleep=time.sleep):
     state = tracker.decrypt_history(json.loads(path.read_text(encoding='utf-8')), password)
     if state.get('clanTag') != tracker.DEFAULT_CLAN_TAG:
         raise ValueError('The saved archive belongs to a different clan.')
+    if shared_actions.ENABLED:
+        try:
+            client = shared_actions.Client(password)
+            if any(shared_actions.pending(client, kind) for kind in ('clan', 'recruitment')):
+                print('An independent dashboard update request is waiting.')
+                return True
+        except shared_actions.SharedActionsError:
+            print('::warning::Shared update queue was unavailable; recorded war timing will still be checked.')
     clock = now or (lambda: datetime.now(timezone.utc))
     target = next_update(state, clock())
     if target is None or target > clock() + timedelta(minutes=5):

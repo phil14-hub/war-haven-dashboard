@@ -1,0 +1,139 @@
+const SharedDashboardSync=(()=>{
+ const config=data.sharedActions,enabled=Boolean(config?.enabled&&window.warHavenSession?.proof);
+ const pending=new Map(),versions=new Map(),recordIds=new Map();
+ const pendingStorage='war-haven-pending-shared:'+data.clanTag;
+ if(enabled)try{for(const[token,entry]of JSON.parse(localStorage.getItem(pendingStorage)||'[]'))if(['notes','lineupPlans'].includes(entry.category)&&typeof entry.key==='string'&&entry.value)pending.set(token,entry);}catch{}
+ function keepDrafts(){try{localStorage.setItem(pendingStorage,JSON.stringify([...pending]));}catch{status('Browser storage is unavailable. Keep this page open until sharing finishes.');}}
+
+ const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true});
+ const decode=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+ const encode=value=>{let text='';for(let i=0;i<value.length;i+=8192)text+=String.fromCharCode(...value.subarray(i,i+8192));return btoa(text);};
+ const combine=(...parts)=>{const result=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const p of parts){result.set(p,at);at+=p.length;}return result;};
+ const context=encoder.encode('WarHavenSharedEdit:v1');
+ let keys=null,proof=null,proofUntil=0,loading=null,flushing=false,saveTimer=null,refreshKind='clan',refreshTimer=null;
+ const requests=new Map();
+ async function cryptoKeys(){
+  if(keys)return keys;const raw=decode(config.encryptionKey);if(raw.length!==64)throw Error('Shared editing configuration needs to be refreshed.');
+  keys={enc:await crypto.subtle.importKey('raw',raw.slice(0,32),'AES-CBC',false,['encrypt','decrypt']),mac:await crypto.subtle.importKey('raw',raw.slice(32),{name:'HMAC',hash:'SHA-256'},false,['sign','verify'])};raw.fill(0);return keys;
+ }
+ async function identifier(category,key){const k=await cryptoKeys();return Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',k.mac,encoder.encode(category+':'+key))),b=>b.toString(16).padStart(2,'0')).join('');}
+ async function encrypt(value){const k=await cryptoKeys(),iv=crypto.getRandomValues(new Uint8Array(16)),cipher=new Uint8Array(await crypto.subtle.encrypt({name:'AES-CBC',iv},k.enc,encoder.encode(JSON.stringify(value)))),tag=new Uint8Array(await crypto.subtle.sign('HMAC',k.mac,combine(context,iv,cipher)));return {version:1,iv:encode(iv),ciphertext:encode(cipher),tag:encode(tag)};}
+ async function decrypt(envelope){
+  const k=await cryptoKeys(),iv=decode(envelope.iv),cipher=decode(envelope.ciphertext),tag=decode(envelope.tag);
+  if(envelope.version!==1||iv.length!==16||tag.length!==32||cipher.length>24000||!await crypto.subtle.verify('HMAC',k.mac,tag,combine(context,iv,cipher)))throw Error('A shared change could not be verified. Your local changes are retained.');
+  const value=JSON.parse(decoder.decode(await crypto.subtle.decrypt({name:'AES-CBC',iv},k.enc,cipher)));
+  if(!['notes','lineupPlans'].includes(value.category)||typeof value.key!=='string'||!value.value||typeof value.value!=='object')throw Error('Invalid shared change.');
+  return value;
+ }
+ async function api(path,body={},retry=true){
+  if(!proof||Date.now()>=proofUntil){
+   const challengeResponse=await fetch(config.url+'/v1/challenge',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
+   if(!challengeResponse.ok)throw Error('Shared saving is temporarily unavailable.');
+   const challenge=await challengeResponse.json();proof=await window.warHavenSession.proof(challenge.salt,challenge.rounds);proofUntil=Date.now()+60000;
+  }
+  const response=await fetch(config.url+path,{method:'POST',headers:{'Content-Type':'application/json','X-War-Haven-Proof':proof},body:JSON.stringify(body),cache:'no-store'});
+  const result=await response.json();
+  if(response.status===401&&retry){proof=null;return api(path,body,false);}
+  if(!response.ok){const error=Error(response.status===401?'Reload and unlock the current dashboard to restore shared access.':result.error||'Shared saving is temporarily unavailable.');error.status=response.status;error.result=result;throw error;}
+  return result;
+ }
+ function status(message){const el=$('shared-save-status');if(el)el.querySelector('[data-shared-message]').textContent=message;}
+ function conflictControls(){const found=[...pending.values()].some(p=>p.conflict);$('shared-use-latest').hidden=!found;$('shared-keep-draft').hidden=!found;}
+ function accept(record,clear){
+  const token=clear.category+':'+clear.key;versions.set(record.id,record.revision);recordIds.set(token,record.id);
+  if(pending.has(token))return;
+  edits[clear.category]||={};edits[clear.category][clear.key]={...clear.value,updatedAt:record.updatedAt};persist();
+  if(clear.category==='notes'&&selectedTag===clear.key&&$('player-dialog').open&&$('player-notes').value!==(clear.value.text||''))$('player-notes').value=clear.value.text||'';
+  if(clear.category==='lineupPlans'&&document.body.dataset.page==='planner'){lineupLoaded='';lineupSelection=null;renderWarPlanner();}
+ }
+ async function load(){
+  if(loading)return loading;
+  loading=(async()=>{const result=await api('/v1/records');for(const record of result.records||[]){const clear=await decrypt(record.envelope);if(record.id!==await identifier(clear.category,clear.key))throw Error('A shared record failed identity verification.');accept(record,clear);}if(!pending.size)status('Shared notes and plans are up to date.');})().finally(()=>loading=null);
+  return loading;
+ }
+ function changed(category,key,value){
+  if(!enabled)return;
+  const token=category+':'+key;
+  const previous=pending.get(token),id=recordIds.get(token);
+  pending.set(token,{category,key,value:JSON.parse(JSON.stringify(value)),baseRevision:previous?previous.baseRevision:(versions.get(id)||null),operationId:crypto.randomUUID()});keepDrafts();
+  status('Saving shared changes…');clearTimeout(saveTimer);saveTimer=setTimeout(flush,700);
+ }
+ async function flush(){
+  if(flushing||!enabled)return;flushing=true;
+  try{
+   await load();
+   for(const [token,entry]of pending){
+    if(entry.conflict)continue;
+    const id=recordIds.get(token)||await identifier(entry.category,entry.key);recordIds.set(token,id);
+    entry.envelope||=await encrypt({category:entry.category,key:entry.key,value:entry.value});
+    try{
+     const result=await api('/v1/record',{id,kind:entry.category,operationId:entry.operationId,expectedRevision:entry.baseRevision||null,envelope:entry.envelope});
+     versions.set(id,result.record.revision);
+     if(pending.get(token)===entry){pending.delete(token);edits[entry.category][entry.key].updatedAt=result.record.updatedAt;persist();}else if(pending.get(token)?.baseRevision===entry.baseRevision)pending.get(token).baseRevision=result.record.revision;keepDrafts();
+    }catch(error){
+     if(error.status===409){entry.conflict=true;entry.remote=error.result.record;keepDrafts();status('Another leader saved a change to the same item. Your draft is kept.');conflictControls();}
+     else throw error;
+    }
+   }
+   if(!pending.size)status('Shared changes saved.');
+  }catch(error){status(error.message+' Your draft is saved on this device.');}
+  finally{flushing=false;if([...pending.values()].some(p=>!p.conflict)){clearTimeout(saveTimer);saveTimer=setTimeout(flush,5000);}}
+ }
+ function lineupChanged(){
+  if(!enabled||!lineupSelection)return;
+  const mode=lineupOptions.mode,value={options:{...lineupOptions},tags:[...lineupSelection],updatedAt:new Date().toISOString()};
+  edits.lineupPlans||={};edits.lineupPlans[mode]=value;persist();changed('lineupPlans',mode,value);
+ }
+ function updateProgress(request){
+  const progress=$('shared-update-bar'),label=$('shared-update-label'),estimate=$('shared-update-estimate');
+  if(!request){progress.value=0;label.textContent='Ready to start';estimate.textContent='';return;}
+  const active=request.status==='running',queued=request.status==='pending',elapsed=active?Math.max(0,(Date.now()-Date.parse(request.startedAt))/1000):0,duration=request.estimateSeconds||120;
+  const percent=request.status==='completed'?100:queued?0:Math.min(95,Math.max(request.progress||0,Math.round(5+85*Math.min(1,elapsed/duration))));
+  progress.value=percent;label.textContent=percent+'% · '+({pending:'Waiting to start',starting:'Starting',collecting:'Collecting data',publishing:'Saving encrypted data',deploying:'Publishing website',completed:'Complete',failed:'Update failed'}[request.phase||request.status]||'Updating');
+  const minutes=seconds=>Math.max(1,Math.ceil(seconds/60))+' min';
+  estimate.textContent=queued?'Usually starts within 5 minutes, then about '+minutes(duration)+'. Cloud scheduling can take longer.':active?(elapsed<duration?'Estimated '+minutes(duration-elapsed)+' remaining.':'Taking longer than estimated. The update is still running.'):request.status==='completed'?'Published. Load the latest dashboard below.':'Your previous dashboard is still available.';
+ }
+ async function refreshStatus(kind=refreshKind){
+  try{const request=(await api('/v1/refresh/status',{kind})).request;if(request)requests.set(kind,request);else requests.delete(kind);
+   if(kind===refreshKind){updateProgress(request);$('website-update-submit').disabled=Boolean(request&&['pending','running'].includes(request.status));if(request?.status==='completed')$('publication-update').hidden=false;}
+  }catch(error){if(kind===refreshKind)$('website-update-error').textContent=error.message;}
+ }
+ function showRefresh(kind='clan'){
+  refreshKind=kind;const recruitment=kind==='recruitment';
+  $('refresh-title').textContent=recruitment?'Refresh recruitment':'Update clan dashboard';
+  $('shared-update-description').textContent=recruitment?'Scan tracked clans and verify recruiting candidates. This does not refresh clan wars, members or Capital data.':'Collect clan, war, member and Capital data. This does not scan recruiting candidates.';
+  $('website-update-submit').textContent=recruitment?'Start recruitment scan':'Start clan update';
+  $('website-update-error').textContent='';$('website-update-submit').disabled=false;updateProgress(requests.get(kind));
+  $('refresh-snapshot').textContent='Last successful '+(recruitment?'recruitment scan: '+date(recruiterReport.updatedAt):'clan snapshot: '+date(data.lastSuccessfulSync));
+  $('automated-refresh-status').textContent='Requests run in the cloud. You can close this page after a request is accepted.';
+  refreshStatus(kind);if(!$('refresh-dialog').open)$('refresh-dialog').showModal();
+ }
+ function wireRefresh(){
+  const form=$('website-update-form');
+  form.innerHTML='<p id="shared-update-description" class="small muted"></p><button id="website-update-submit" class="primary full-width" type="submit">Start clan update</button><div class="shared-update-meter"><div id="shared-update-label" role="status">Ready to start</div><progress id="shared-update-bar" value="0" max="100" aria-label="Estimated update progress"></progress><p id="shared-update-estimate" class="small muted"></p></div>';
+  form.onsubmit=async event=>{event.preventDefault();const kind=refreshKind;$('website-update-error').textContent='';$('website-update-submit').disabled=true;try{const result=await api('/v1/refresh/request',{kind});requests.set(kind,result.request);if(kind===refreshKind)updateProgress(result.request);}catch(error){$('website-update-error').textContent=error.message;$('website-update-submit').disabled=false;}};
+  $('refresh-data').onclick=()=>showRefresh('clan');$('refresh-recruiter').onclick=()=>showRefresh('recruitment');$('settings-refresh').onclick=()=>{$('settings-dialog').close();showRefresh('clan');};
+  // These controls supersede the owner-token flow after the shared service is available.
+  $('refresh-dialog').querySelectorAll('[data-legacy-update]').forEach(node=>node.hidden=true);
+  $('howto-refresh').textContent='Use Update dashboard for clan, war, member and Capital data. Use Management → Recruiter → Refresh recruiting candidates for recruitment only. Each runs independently. The estimate includes a cloud queue and a running progress bar; 100% means publication is confirmed. Choose Load latest dashboard and unlock again when it finishes.';
+  clearInterval(refreshTimer);refreshTimer=setInterval(()=>{if($('refresh-dialog').open)refreshStatus(refreshKind);},5000);
+ }
+ async function start(){
+  if(!enabled)return;
+  const banner=document.createElement('div');banner.id='shared-save-status';banner.className='notice';banner.setAttribute('role','status');banner.innerHTML='<span data-shared-message>Loading shared notes and plans…</span> <button id="shared-use-latest" hidden>Load their change</button> <button id="shared-keep-draft" hidden>Save my draft</button>';
+  $('overview').parentElement.prepend(banner);
+  $('howto-saving').textContent='Notes and lineup plans save automatically for every leader using this dashboard. Wait for Shared changes saved before closing. If two leaders edit the same item, your draft is kept and you can load their change or save yours. Offline drafts stay on this device and retry when connected. Other edits and captured history can still be exported with Management → Save changes / backup.';
+  $('shared-storage-info').textContent='Notes and lineup plans save automatically and sync between leaders. Other edits remain in this browser until backed up and imported.';
+  $('shared-use-latest').onclick=async()=>{const found=[...pending].find(([,v])=>v.conflict);if(!found)return;const[token,entry]=found;pending.delete(token);keepDrafts();if(entry.remote)accept(entry.remote,await decrypt(entry.remote.envelope));conflictControls();status('Loaded the other leader’s saved change.');};
+  $('shared-keep-draft').onclick=()=>{const entry=[...pending.values()].find(v=>v.conflict);if(!entry)return;if(entry.remote){versions.set(entry.remote.id,entry.remote.revision);entry.baseRevision=entry.remote.revision;}entry.conflict=false;entry.remote=null;entry.operationId=crypto.randomUUID();keepDrafts();conflictControls();flush();};
+  document.addEventListener('input',event=>{if(event.target.id!=='player-notes'||!selectedTag)return;const value={text:event.target.value.slice(0,6000),updatedAt:new Date().toISOString()};edits.notes[selectedTag]=value;persist();changed('notes',selectedTag,value);});
+  document.addEventListener('change',event=>{if(event.target.matches('[data-lineup-player],#planner-mode,#planner-size,#planner-balance,#planner-unknown'))lineupChanged();});
+  document.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(['planner-suggest','planner-save'].includes(button.id))lineupChanged();if(button.id==='save-note'&&selectedTag&&edits.notes[selectedTag])changed('notes',selectedTag,edits.notes[selectedTag]);});
+  window.addEventListener('online',flush);
+  wireRefresh();
+  try{await load();conflictControls();for(const category of ['notes','lineupPlans'])for(const [key,value]of Object.entries(edits[category]||{}))if(!recordIds.has(category+':'+key)&&!pending.has(category+':'+key))changed(category,key,value);}
+  catch(error){status(error.message+' Local notes remain available.');}
+  setInterval(()=>{if(!document.hidden)load().catch(error=>status(error.message));if(pending.size)flush();},20000);
+ }
+ return {start,changed};
+})();
