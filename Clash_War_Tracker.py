@@ -1409,6 +1409,26 @@ def github_request(config, method, path, payload=None):
         raise PublishError(0, 'GitHub could not be reached. Local history was saved; the website was not replaced.') from None
 
 
+def pages_https_url(pages):
+    """Keep the configured Pages domain, verifying TLS if its metadata still says HTTP."""
+    url = pages.get('html_url')
+    parsed = urlparse(url) if isinstance(url, str) else None
+    if not parsed or parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password:
+        raise PublishError(0, 'GitHub Pages has not supplied a ready website URL yet.')
+    if parsed.scheme == 'https':
+        return url
+    secure_url = parsed._replace(scheme='https').geturl()
+    request = Request(secure_url, headers={'User-Agent': 'Clash-War-Tracker/' + VERSION})
+    try:
+        with urlopen(request, timeout=20) as response:
+            final = urlparse(response.geturl())
+            if response.status != 200 or final.scheme != 'https' or final.hostname != parsed.hostname:
+                raise PublishError(0, 'The configured Pages domain must serve HTTPS before publishing.')
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError):
+        raise PublishError(0, 'HTTPS is not ready on the configured Pages domain. The saved dashboard was not replaced.') from None
+    return secure_url
+
+
 def publish_dashboard(config, protected_file, wait_seconds=60, state=None):
     root = '/repos/' + config['repository']
     repository = github_request(config, 'GET', root)
@@ -1422,9 +1442,7 @@ def publish_dashboard(config, protected_file, wait_seconds=60, state=None):
     source = pages.get('source') or {}
     if pages.get('build_type') == 'workflow' or source.get('branch') != branch or source.get('path', '/') != '/':
         raise PublishError(0, 'Use a dedicated dashboard repository with Pages publishing from the default branch and root folder.')
-    url = pages.get('html_url')
-    if not isinstance(url, str) or urlparse(url).scheme != 'https':
-        raise PublishError(0, 'GitHub Pages has not supplied a ready HTTPS website URL yet.')
+    url = pages_https_url(pages)
     if state is not None:
         sha=publish_history_commit(config,protected_file,state,branch)
     else:
