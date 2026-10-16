@@ -79,6 +79,7 @@ def collect(env, tracker, config, route, state, *, post_war, request):
     if shared_actions.ENABLED:
         shared_actions.pull(candidate, request.client, tracker)
     request.progress('collecting', 20)
+    print('Collecting clan data independently; the saved recruitment scan is retained.')
     tracker.refresh(candidate, tracker.OfficialAPI([env['COC_API_TOKEN'].strip()]))
     candidate['website'] = {'protected': True, 'configured': True, 'historyStored': True}
     candidate['automaticUpdates'] = {**candidate.get('automaticUpdates', {}),
