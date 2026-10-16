@@ -41,6 +41,8 @@ const SharedDashboardSync=(()=>{
  function conflictControls(){const found=[...pending.values()].some(p=>p.conflict);$('shared-use-latest').hidden=!found;$('shared-keep-draft').hidden=!found;}
  function accept(record,clear){
   const token=clear.category+':'+clear.key;versions.set(record.id,record.revision);recordIds.set(token,record.id);
+  const draft=pending.get(token);
+  if(draft?.migration&&JSON.stringify({...draft.value,updatedAt:null})===JSON.stringify({...clear.value,updatedAt:null})){pending.delete(token);keepDrafts();}
   if(pending.has(token))return;
   edits[clear.category]||={};edits[clear.category][clear.key]={...clear.value,updatedAt:record.updatedAt};persist();
   if(clear.category==='notes'&&selectedTag===clear.key&&$('player-dialog').open&&$('player-notes').value!==(clear.value.text||''))$('player-notes').value=clear.value.text||'';
@@ -78,6 +80,11 @@ const SharedDashboardSync=(()=>{
    if(!pending.size)status('Shared changes saved.');
   }catch(error){status(error.message+' Your draft is saved on this device.');}
   finally{flushing=false;if([...pending.values()].some(p=>!p.conflict)){clearTimeout(saveTimer);saveTimer=setTimeout(flush,5000);}}
+ }
+ function seedDrafts(){
+  for(const category of ['notes','lineupPlans'])for(const[key,value]of Object.entries(edits[category]||{})){
+   if(!pending.has(category+':'+key)&&JSON.stringify(value)!==JSON.stringify(data.edits?.[category]?.[key])){changed(category,key,value);pending.get(category+':'+key).migration=true;keepDrafts();}
+  }
  }
  function lineupChanged(){
   if(!enabled||!lineupSelection)return;
@@ -130,7 +137,7 @@ const SharedDashboardSync=(()=>{
   document.addEventListener('change',event=>{if(event.target.matches('[data-lineup-player],#planner-mode,#planner-size,#planner-balance,#planner-unknown'))lineupChanged();});
   document.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(['planner-suggest','planner-save'].includes(button.id))lineupChanged();if(button.id==='save-note'&&selectedTag&&edits.notes[selectedTag])changed('notes',selectedTag,edits.notes[selectedTag]);});
   window.addEventListener('online',flush);
-  wireRefresh();
+  seedDrafts();wireRefresh();
   try{await load();conflictControls();for(const category of ['notes','lineupPlans'])for(const [key,value]of Object.entries(edits[category]||{}))if(!recordIds.has(category+':'+key)&&!pending.has(category+':'+key))changed(category,key,value);}
   catch(error){status(error.message+' Local notes remain available.');}
   setInterval(()=>{if(!document.hidden)load().catch(error=>status(error.message));if(pending.size)flush();},20000);

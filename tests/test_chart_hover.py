@@ -26,22 +26,29 @@ class Element {
  getBoundingClientRect(){return {left:30,top:80,width:200,height:20};}
  querySelector(){return this;}
 }
-const point=new Element(),container=new Element(),events={};
+const point=new Element(),container=new Element(),events={},windowEvents={};
+point.closest=()=>point;
 container.querySelectorAll=()=>[point];container.contains=target=>target===point||target===container;
 const document={activeElement:point,createElement:()=>new Element(),querySelectorAll:()=>[container],addEventListener:(name,fn)=>events[name]=fn};
-const window={addEventListener(){}};
+const window={addEventListener:(name,fn)=>windowEvents[name]=fn};
 let chartTooltipSequence=0,chartDismissBound=false,chartInspectors=new Map(),selected=null;
 '''+source[start:end]+r'''
 wireChartInspection(container,'point',()=>({value:'42',label:'Value'}),v=>selected=v,()=>selected=null);
 const tooltip=container.children[0];
 point.onpointerenter({pointerType:'mouse'});assert.equal(tooltip.hidden,false);assert.equal(selected.value,'42');
 point.onpointerleave({pointerType:'mouse'});assert.equal(tooltip.hidden,true);assert.equal(selected,null);
-point.onpointerenter({pointerType:'mouse'});point.onclick();point.onpointerleave({pointerType:'mouse'});assert.equal(tooltip.hidden,true);assert.equal(point.attrs['aria-pressed'],'false');
+point.onpointerenter({pointerType:'mouse'});point.onclick({detail:1});assert.equal(point.attrs['aria-pressed'],'false');point.onpointerleave({pointerType:'mouse'});assert.equal(tooltip.hidden,true);assert.equal(point.attrs['aria-pressed'],'false');
 point.onpointerenter({pointerType:'touch'});point.onclick();point.onpointerleave({pointerType:'touch'});assert.equal(tooltip.hidden,false);
 events.pointerdown({target:{}});assert.equal(tooltip.hidden,true);assert.equal(selected,null);
 point.onfocus();assert.equal(tooltip.hidden,false);point.onblur();assert.equal(tooltip.hidden,true);
 point.onfocus();point.onkeydown({key:'Escape',preventDefault(){},stopPropagation(){}});assert.equal(tooltip.hidden,true);
-console.log('Hover, mouse-click leave, touch, outside dismissal, keyboard blur and Escape passed.');
+point.onpointerenter({pointerType:'mouse'});container.onpointerleave({pointerType:'mouse'});assert.equal(tooltip.style.display,'none');assert.equal(tooltip.children.length,0);
+point.onpointerenter({pointerType:'mouse'});events.pointermove({pointerType:'mouse',target:point});assert.equal(tooltip.hidden,false);events.pointermove({pointerType:'mouse',target:{}});assert.equal(tooltip.hidden,true);
+for(const name of ['blur','resize']){point.onpointerenter({pointerType:'mouse'});windowEvents[name]();assert.equal(tooltip.hidden,true);}
+point.onpointerenter({pointerType:'mouse'});events.scroll();assert.equal(tooltip.hidden,true);
+point.onpointerenter({pointerType:'mouse'});document.hidden=true;events.visibilitychange();assert.equal(tooltip.hidden,true);document.hidden=false;
+point.onpointerenter({pointerType:'touch'});point.onpointercancel();assert.equal(tooltip.hidden,true);
+console.log('Point/host leave, mouse click, global pointer movement, scrolling, window blur, touch cancellation and keyboard dismissal passed.');
 '''
   result=subprocess.run(['node','-e',program],capture_output=True,text=True)
   self.assertEqual(result.returncode,0,result.stderr)
@@ -51,6 +58,7 @@ console.log('Hover, mouse-click leave, touch, outside dismissal, keyboard blur a
   self.assertIn("()=>{$('chart-inspect').textContent='';}",source)
   self.assertIn("()=>{$('player-chart-inspect').textContent='';}",source)
   self.assertIn("show,()=>{if(inspect)inspect.textContent='';}",source)
+  self.assertFalse(any('<title>' in line for line in source.splitlines() if 'data-growth-point=' in line or 'data-contribution-point=' in line),'Point markup must use only the custom tooltip')
   self.assertNotIn('inspect(trendPoints.findLastIndex',source)
   self.assertNotIn('if(known.length)inspect',source)
   self.assertNotIn('show(entry(visible.map',source)

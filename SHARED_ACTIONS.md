@@ -1,6 +1,6 @@
 # Encrypted shared actions
 
-The supporting service is deployed at https://war-haven-actions.readydrake18.chatgpt.site with owner-only hosting access. `shared_actions.ENABLED` is false until the owner explicitly authorizes the service to be reachable by co-leaders at the existing GitHub Pages dashboard. This keeps existing controls functional while the new access decision is pending.
+The supporting service at https://war-haven-actions.readydrake18.chatgpt.site is reachable from the dashboard. `shared_actions.ENABLED` is true. The dashboard passphrase authorizes every shared-data and update operation; the service stores encrypted notes/plans and independent refresh queues.
 
 ## Behavior when enabled
 
@@ -15,6 +15,6 @@ The supporting service is deployed at https://war-haven-actions.readydrake18.cha
 
 `shared_dashboard.js` supplies client synchronization; its source is embedded in the portable Python tracker. `shared_actions.py` supplies the Actions client and encrypted-record import. Backend source is maintained in the registered War Haven shared actions Site. It contains no GitHub token, password or plaintext notes.
 
-## Activation after the audience decision
+## Verification
 
-Keep the existing Site ID and deployment. With explicit owner authorization, use Sites access controls to make the password-protected API reachable, then set `ENABLED = True` in `shared_actions.py`. Publishing that change triggers independent cloud jobs that restore the archive, create/preserve the shared editing key and regenerate the encrypted dashboard. Verify both queues, shared saves and Pages publication. No new provider credential should be pasted into the dashboard.
+The same registered Site remains deployed. Both independent collectors restore the archive and preserve the shared encryption key before regeneration. The dashboard never requests a provider token for clan or recruitment refresh. Password changes retain separate owner authorization. Tests cover actual tracker record import, the first activation with existing notes, concurrent saves, retry behavior and hover cleanup.
