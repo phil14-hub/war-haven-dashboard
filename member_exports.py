@@ -1,0 +1,155 @@
+"""Build the member-only projection; never publish leadership notes or raw edits."""
+import base64
+from datetime import datetime, timezone
+import hashlib
+import json
+import re
+
+
+def stamp(value):
+    try:
+        return datetime.fromisoformat(str(value).replace('Z', '+00:00')).timestamp()
+    except (ValueError, TypeError):
+        return 0
+
+
+def count(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def capital_evidence(history, as_of):
+    samples = {}
+    since, end = stamp(history.get('since')), min(as_of, stamp(history.get('leftAt')) or as_of)
+    for sample in history.get('capitalSamples', []):
+        at = stamp(sample.get('at'))
+        if not since <= at <= end or not at:
+            continue
+        value = sample.get('total') if count(sample.get('total')) else None
+        if at in samples:
+            old = samples[at]['total']
+            value = max(old, value) if old is not None and value is not None else None
+        samples[at] = {'at': sample['at'], 'total': value}
+    high = previous = None
+    total, series = 0, []
+    for sample in sorted(samples.values(), key=lambda item: stamp(item['at'])):
+        value = sample['total']
+        if value is None:
+            previous = None
+            continue
+        if previous is not None and high is not None:
+            total += max(0, value - high)
+        series.append({'at': sample['at'], 'value': total})
+        high, previous = max(high if high is not None else value, value), sample['at']
+    return (total if series else None), series
+
+
+def donation_evidence(history, as_of):
+    previous = stamp(history.get('since'))
+    end = min(as_of, stamp(history.get('leftAt')) or as_of)
+    total, series = 0, []
+    for sample in sorted(history.get('donationIntervals', []), key=lambda v: (stamp(v.get('end')), v.get('count', 0))):
+        start, stop, value = stamp(sample.get('start')), stamp(sample.get('end')), sample.get('count')
+        if not count(value) or not value or not start or start < previous or stop <= start or stop > end:
+            continue
+        total += value
+        previous = stop
+        series.append({'at': sample['end'], 'value': total})
+    return series
+
+
+def build_snapshot(state, tracker):
+    at = state.get('lastSuccessfulSync')
+    roster = state.get('roster')
+    if not stamp(at) or not isinstance(roster, list) or not 1 <= len(roster) <= 50:
+        raise ValueError('Member publication requires a complete successful clan snapshot.')
+    clan = state.get('clanProfile') or {}
+    if isinstance(clan.get('members'), int) and clan['members'] != len(roster):
+        raise ValueError('Member roster count does not match the clan snapshot.')
+    wars = {v['id']: v for v in state.get('wars', []) if v.get('id')}
+    wars.update((state.get('edits') or {}).get('manualWars', {}))
+    members, comparisons = {}, []
+    for player in roster:
+        tag = tracker.normalize_tag(player.get('tag'))
+        if not tag or tag in members:
+            raise ValueError('Invalid or duplicate member tag.')
+        profile = state.get('profiles', {}).get(tag) or {}
+        history = state.get('memberHistory', {}).get(tag) or {}
+        capital, capital_series = capital_evidence(history, stamp(at))
+        donations = donation_evidence(history, stamp(at))
+        own_wars = []
+        stats = {'used': 0, 'allowed': 0, 'appearances': 0, 'stars': 0, 'attacks': 0, 'triples': 0}
+        for war in sorted(wars.values(), key=lambda w: stamp(w.get('endTime'))):
+            if war.get('kind') not in ('Regular', 'CWL'):
+                continue
+            participant = next((p for p in war.get('participants', []) if tracker.normalize_tag(p.get('tag')) == tag), None)
+            if not participant:
+                continue
+            final = bool(war.get('final') and war.get('rosterComplete'))
+            used, allowed = participant.get('attacksUsed'), war.get('attacksPerMember')
+            own_wars.append({'id': war.get('id'), 'kind': war.get('kind'), 'opponent': (war.get('opponent') or {}).get('name', 'Opponent'),
+                             'startTime': war.get('startTime'), 'endTime': war.get('endTime'), 'state': war.get('state'), 'final': final,
+                             'used': used if count(used) else None, 'allowed': allowed if count(allowed) else None,
+                             'stars': participant.get('starsEarned') if count(participant.get('starsEarned')) else (0 if used == 0 else None)})
+            if not final:
+                continue
+            stats['appearances'] += 1
+            excused = bool((state.get('edits') or {}).get('exceptions', {}).get(war['id'] + '::' + tag, {}).get('value'))
+            if count(used) and count(allowed) and used <= allowed and not excused:
+                stats['used'] += used
+                stats['allowed'] += allowed
+            for attack in participant.get('attacks', []):
+                if count(attack.get('stars')) and attack['stars'] <= 3:
+                    stats['attacks'] += 1
+                    stats['stars'] += attack['stars']
+                    stats['triples'] += attack['stars'] == 3
+        raids = []
+        for raid in {r.get('id') or r.get('startTime'): r for r in state.get('raids', [])}.values():
+            entry = next((p for p in raid.get('members', []) if tracker.normalize_tag(p.get('tag')) == tag), None)
+            if entry:
+                raids.append({'id': raid.get('id'), 'endTime': raid.get('endTime'), 'state': raid.get('state'), 'loot': entry.get('capitalResourcesLooted'), 'attacks': entry.get('attacks')})
+        completed_loot = [r['loot'] for r in raids if r['state'] == 'ended' and count(r['loot'])]
+        league = tracker.league_placement(player, profile, at, state.get('clanTag'))
+        league_series = []
+        for sample in state.get('leagueHistory', []):
+            entry = next((p for p in sample.get('members', []) if tracker.normalize_tag(p.get('tag')) == tag), None)
+            if entry and entry.get('league', {}).get('points') is not None:
+                league_series.append({'at': sample['at'], 'value': entry['league']['points']})
+        army = state.get('memberProgress', {}).get(tag) or {}
+        army_series = [{'at': p['at'], 'value': p['percent']} for p in state.get('memberProgressHistory', {}).get(tag, []) if p.get('at') and p.get('percent') is not None]
+        badges = []
+        for condition, label in [(stats['used'] >= 10, '10 confirmed war attacks'), (stats['stars'] >= 30, '30 recorded war stars'),
+                                 (capital is not None and capital >= 10000, '10,000 confirmed Capital Gold'),
+                                 (bool(donations) and donations[-1]['value'] >= 1000, '1,000 observed donations')]:
+            if condition:
+                badges.append(label)
+        view = {'tag': tag, 'name': str(player.get('name') or tag), 'townHallLevel': player.get('townHallLevel') or profile.get('townHallLevel'),
+                'role': player.get('role'), 'since': history.get('since'), 'warPreference': player.get('warPreference'),
+                'league': {'points': league.get('points'), 'name': league.get('name') or league.get('tier')},
+                'seasonDonations': player.get('donations'), 'donationsReceived': player.get('donationsReceived'),
+                'capitalGold': capital, 'capitalSeries': capital_series[-730:], 'donationSeries': donations[-730:],
+                'raidLoot': sum(completed_loot) if completed_loot else None, 'raids': raids, 'wars': own_wars,
+                'warStats': stats, 'leagueSeries': league_series[-730:], 'armySeries': army_series[-730:], 'armyPercent': army.get('percent'),
+                'heroes': [{'name': h.get('name'), 'level': h.get('level')} for h in profile.get('heroes', []) if h.get('village', 'home') == 'home'],
+                'achievements': badges}
+        members[tag] = view
+        comparisons.append({'tag': tag, 'name': view['name'], 'townHallLevel': view['townHallLevel'], 'leaguePoints': league.get('points'),
+                            'seasonDonations': view['seasonDonations'], 'capitalGold': capital, 'warStars': stats['stars'] if stats['attacks'] else None,
+                            'raidLoot': view['raidLoot'], 'attackUse': stats['used'] / stats['allowed'] if stats['allowed'] else None})
+    return {'version': 1, 'updatedAt': at, 'clan': {'tag': state['clanTag'], 'name': state.get('clanName') or 'War Haven', 'level': clan.get('clanLevel')},
+            'members': members, 'comparisons': comparisons}
+
+
+def publish(state, dashboard, client, password, tracker):
+    """Publish a small member projection and authenticated leadership bridge to R2."""
+    view = build_snapshot(state, tracker)
+    html = dashboard.read_text()
+    match = re.search(r'id="protected-payload">(.*?)</script>', html, re.S)
+    if not match:
+        raise ValueError('Protected dashboard payload not found.')
+    envelope = json.loads(match.group(1))
+    key = hashlib.pbkdf2_hmac('sha256', password.encode(), base64.b64decode(envelope['salt'], validate=True), envelope['rounds'], dklen=64)
+    result = client.request('/members/api/ingest', {'view': view, 'leadership': {'payload': envelope, 'key': base64.b64encode(key).decode()}})
+    print('Member projection synchronized (' + str(result.get('members', 0)) + ' members; ' + str(result.get('bytes', 0)) + ' bytes).')
+    raw_bytes = len(json.dumps(state, ensure_ascii=False, separators=(',', ':')).encode())
+    print('Storage check: complete uncompressed history ' + str(raw_bytes) + ' bytes of the 52428800-byte safeguard; leadership publication ' + str(dashboard.stat().st_size) + ' bytes.')
+    return result

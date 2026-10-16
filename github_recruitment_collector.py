@@ -40,6 +40,11 @@ def collect(env, tracker, config, route, state, request):
         tracker.write_dashboard(candidate, dashboard, password=config['password'])
         request.progress('deploying', 90)
         result = tracker.publish_dashboard(config, dashboard, state=candidate, **({'wait_seconds': 180} if request.lease else {}))
+        try:
+            import member_exports
+            member_exports.publish(candidate, dashboard, request.client, config['password'], tracker)
+        except Exception:
+            print('::warning::Member dashboards retained their previous snapshot; synchronization will retry on the next update.')
     print('Recruitment updated independently. Clan collection was not run.')
     request.finish(result)
     return result

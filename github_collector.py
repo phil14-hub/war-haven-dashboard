@@ -98,6 +98,11 @@ def collect(env, tracker, config, route, state, *, post_war, request):
         tracker.write_dashboard(candidate, dashboard, password=config['password'])
         request.progress('deploying', 90)
         result = tracker.publish_dashboard(config, dashboard, state=candidate, **({'wait_seconds': 180} if request.lease else {}))
+        try:
+            import member_exports
+            member_exports.publish(candidate, dashboard, request.client, config['password'], tracker)
+        except Exception:
+            print('::warning::Member dashboards retained their previous snapshot; member synchronization will retry on the next clan update.')
     print('Encrypted dashboard and history updated.' if result['published']
           else 'Encrypted update uploaded; GitHub Pages is still deploying.')
     request.finish(result)

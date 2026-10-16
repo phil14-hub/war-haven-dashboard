@@ -8,6 +8,7 @@ on:
       - 'shared_actions.py'
       - 'Clash_War_Tracker.py'
       - 'github_collector.py'
+      - 'member_exports.py'
       - 'war_end_updates.py'
       - '.github/workflows/update-clan.yml'
   schedule:

@@ -26,7 +26,7 @@ class LiveDashboardTests(unittest.TestCase):
   program=r'''
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),{webcrypto}=require('node:crypto');
 const f=JSON.parse(fs.readFileSync(0,'utf8')),nodes={'protected-payload':{textContent:JSON.stringify(f.original)},'unlock-form':{},'dashboard-password':{value:f.password,focus(){}},'unlock-button':{},'unlock-error':{textContent:''}};
-let documentWrites=0;const context={crypto:webcrypto,TextEncoder,TextDecoder,Uint8Array,atob,btoa,window:{},document:{getElementById:id=>nodes[id],open(){},write(html){assert.equal(html,'<main>Original</main>');documentWrites++;},close(){}}};
+let documentWrites=0;const context={crypto:webcrypto,URL,location:{href:'https://example.invalid/'},TextEncoder,TextDecoder,Uint8Array,atob,btoa,window:{},document:{getElementById:id=>nodes[id],open(){},write(html){assert.equal(html,'<main>Original</main>');documentWrites++;},close(){}}};
 vm.runInNewContext(f.script,context);
 (async()=>{
  await nodes['unlock-form'].onsubmit({preventDefault(){}});assert.equal(nodes['unlock-error'].textContent,'');assert.equal(nodes['dashboard-password'].value,'');assert.equal(documentWrites,1);

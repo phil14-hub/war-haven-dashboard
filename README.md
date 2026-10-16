@@ -1,5 +1,7 @@
 # War Haven leadership dashboard
 
+Individual member accounts and dashboards are described in [MEMBER_ACCOUNTS.md](MEMBER_ACCOUNTS.md). The approval system makes a member view available immediately after email verification, membership validation and leadership approval. Email delivery must be activated before public registration opens.
+
 The redesigned dashboard keeps the existing navy/gold cards and typography, with **Home, Members, Wars, Capital and Manage** navigation. It includes weekly league-point reports, clan and player progression, clan XP milestones, a war lineup planner, recruiting, and a single player report with war information first.
 
 The website and complete clan history are password encrypted. Source code is public; **the dashboard passphrase and publishing/API credentials are not stored in this repository**.
@@ -73,6 +75,6 @@ Never commit `coc_token.txt`, `dashboard_website.json`, plaintext state files, b
 
 The bundled AES fallback is pyaes 1.6.1, copyright 2014 Richard Moore, MIT licensed. Its original license is retained in the single-file source.
 
-Current checks: 36 Python tests, including actual generated JavaScript syntax, independent collector behavior, viewer-local times, hover dismissal, archive continuity and browser/cloud encryption interoperability. JavaScript checks cover concurrent shared edits, retained drafts, idempotent retry, progress completion, password proofs, CORS, separate update queues and automatic data-only updates that preserve the unlocked view. Browser visual QA was unavailable in this environment.
+Current checks: 40 Python tests, including actual generated JavaScript syntax, independent collector behavior, viewer-local times, hover dismissal, archive continuity and browser/cloud encryption interoperability. JavaScript checks cover concurrent shared edits, retained drafts, idempotent retry, progress completion, password proofs, CORS, separate update queues and automatic data-only updates that preserve the unlocked view. Browser visual QA was unavailable in this environment.
 
 Town Hall images are bundled from [ClashKingAssets](https://github.com/ClashKingInc/ClashKingAssets/tree/main/assets/buildings/home-village/town_hall), so the dashboard does not fetch them from a third-party host at view time. Clash of Clans assets belong to Supercell.
