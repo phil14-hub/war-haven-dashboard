@@ -31,7 +31,8 @@ const DashboardLiveUpdates=(()=>{
   if(snapshot.schemaVersion!==1||WarTracker.tag(snapshot.clanTag)!==WarTracker.tag(data.clanTag)||!Array.isArray(snapshot.roster)||!Array.isArray(snapshot.wars))throw Error('The new snapshot could not be verified. Your current dashboard is still available.');
   if(data.sharedActions?.encryptionKey&&snapshot.sharedActions?.encryptionKey!==data.sharedActions.encryptionKey)throw Error('Shared access settings changed. Reopen the dashboard when convenient to use the new settings.');
   const view=captureView(),prior={data,edits,report:recruiterReport};
-  const combined=WarTracker.mergeData(data,snapshot),nextEdits=pendingEdits(snapshot.edits||{});
+  // Start with the publication so current metadata wins while saved history is retained.
+  const combined=WarTracker.mergeData(snapshot,data),nextEdits=pendingEdits(snapshot.edits||{});
   try{
    data={...snapshot,...combined,edits:snapshot.edits,automaticUpdates:snapshot.automaticUpdates,
     recruiterSummary:snapshot.recruiterSummary,recruiterStatus:snapshot.recruiterStatus,sharedActions:snapshot.sharedActions};

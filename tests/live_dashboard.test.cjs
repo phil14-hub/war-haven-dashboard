@@ -10,6 +10,7 @@ node('publication-update');node('publication-message');node('recruit-search').va
 let renders=0,invalidations=0,raidChanges=0,fetches=[],etag='v1',publicationTag='initial',failFetch=false,failRender=false;
 const snapshot=(at,name)=>({...fixture.state,lastSuccessfulSync:at,roster:[{tag:'#P0Y',name}],sharedActions:{enabled:true,encryptionKey:'same-key'},edits:{notes:{'#P0Y':{text:'Published note',updatedAt:at}}}});
 const old=snapshot('2030-01-01T00:00:00Z','Old name'),fresh=snapshot('2030-01-01T01:00:00Z','Fresh name');
+old.warnings=['Previous warning'];old.leagueWarSummaries={round:{stars:1}};fresh.warnings=[];fresh.leagueWarSummaries={round:{stars:3}};
 let publicationSnapshot=fresh,publicationReport={updatedAt:'2030-01-01T01:00:00Z',groups:{new:[{name:'New candidate'}]}};
 const context={console,URL,Date,AbortSignal,JSON,Uint8Array,Map,Set,location:{protocol:'https:',href:'https://example.invalid/dashboard/?v=1.20#roster',reload(){throw Error('Must stay unlocked');}},data:old,edits:{notes:{'#P0Y':{text:'Pending note',updatedAt:'2029-01-01T00:00:00Z'}}},rows:[{tag:'#P0Y'}],selectedTag:'#P0Y',recruiterReport:{updatedAt:old.lastSuccessfulSync},$:id=>nodes[id],
  ClanProgress:{merge:(a,b)=>[...a,...b]},Leadership:{mergeHistory:(a,b)=>[...a,...b]},
@@ -29,6 +30,7 @@ const app=vm.runInContext(fs.readFileSync('live_dashboard.js','utf8')+';Dashboar
 (async()=>{
  app.applySnapshot(fresh,publicationReport);
  assert.equal(context.data.roster[0].name,'Fresh name');assert.equal(context.data.lastSuccessfulSync,fresh.lastSuccessfulSync);
+ assert.equal(context.data.warnings.length,0);assert.equal(context.data.leagueWarSummaries.round.stars,3);
  assert.equal(context.edits.notes['#P0Y'].text,'Pending note');assert.equal(nodes['player-notes'].value,'Pending note');
  assert.equal(context.document.body.dataset.page,'roster');assert.equal(nodes['player-dialog'].open,true);
  assert.equal(nodes.search.value,'saved search');assert.equal(nodes['manual-opponent'].value,'Unsaved opponent');assert.equal(nodes['raid-select'].value,'older');assert.equal(raidChanges,1);
