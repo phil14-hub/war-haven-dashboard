@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import re
+from urllib.request import Request, urlopen
 
 
 def stamp(value):
@@ -139,6 +140,23 @@ def build_snapshot(state, tracker):
             'members': members, 'comparisons': comparisons}
 
 
+def fetch_clan_badge(state, tracker):
+    """Keep only the current public badge in R2, outside GitHub history."""
+    url=tracker.clan_badge_url(state.get('clanProfile'))
+    if not url:
+        return None
+    try:
+        request=Request(url,headers={'User-Agent':'WarHavenDashboard/1.19 (+https://github.com/phil14-hub/war-haven-dashboard)'})
+        with urlopen(request,timeout=15) as response:
+            raw=response.read(262145)
+            if response.geturl()!=url or len(raw)>262144 or not raw.startswith(b'\x89PNG\r\n\x1a\n'):
+                raise ValueError('Invalid clan badge.')
+        return {'url':url,'png':base64.b64encode(raw).decode('ascii')}
+    except (OSError,ValueError):
+        print('Clan crest download unavailable; the previous saved icon is retained.')
+        return None
+
+
 def publish(state, dashboard, client, password, tracker):
     """Publish a small member projection and authenticated leadership bridge to R2."""
     view = build_snapshot(state, tracker)
@@ -148,7 +166,11 @@ def publish(state, dashboard, client, password, tracker):
         raise ValueError('Protected dashboard payload not found.')
     envelope = json.loads(match.group(1))
     key = hashlib.pbkdf2_hmac('sha256', password.encode(), base64.b64decode(envelope['salt'], validate=True), envelope['rounds'], dklen=64)
-    result = client.request('/members/api/ingest', {'view': view, 'leadership': {'payload': envelope, 'key': base64.b64encode(key).decode()}})
+    publication={'view': view, 'leadership': {'payload': envelope, 'key': base64.b64encode(key).decode()}}
+    badge=fetch_clan_badge(state,tracker)
+    if badge:
+        publication['clanBadge']=badge
+    result = client.request('/members/api/ingest', publication)
     print('Member projection synchronized (' + str(result.get('members', 0)) + ' members; ' + str(result.get('bytes', 0)) + ' bytes).')
     raw_bytes = len(json.dumps(state, ensure_ascii=False, separators=(',', ':')).encode())
     print('Storage check: complete uncompressed history ' + str(raw_bytes) + ' bytes of the 52428800-byte safeguard; leadership publication ' + str(dashboard.stat().st_size) + ' bytes.')
