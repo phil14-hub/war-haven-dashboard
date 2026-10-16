@@ -38,6 +38,14 @@ The gear opens real Settings with persistent browser preferences. Preparation wa
 
 Hover, tap, click or keyboard-focus a graph point to inspect its saved value and date. This works for war performance, clan growth and XP, member upgrades and player contributions. Click/tap pins the label; a second tap, an outside tap or Escape dismisses it.
 
+## Final results after a war
+
+The cloud updater records each known war's end time and targets another update
+five minutes afterward. It works with the phone closed and keeps the daily
+schedule. GitHub scheduling may delay the start. Wait for the final capture to
+finish before searching for the next regular war. See
+[automatic final-war updates](AUTOMATIC_UPDATES.md#automatic-final-war-update).
+
 ## Daily use
 
 Run the script when you want fresh data. It saves history on GitHub and updates the same website URL. Capture regular-war results after a war ends and before starting the next war. The website itself displays the last published snapshot.

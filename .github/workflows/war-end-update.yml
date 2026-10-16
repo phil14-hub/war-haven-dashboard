@@ -1,0 +1,73 @@
+name: Capture final war results
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '2-57/5 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'war_end_updates.py'
+      - 'github_war_check.py'
+      - 'tests/test_war_end_updates.py'
+      - '.github/workflows/war-end-update.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      due: ${{ steps.timing.outputs.due }}
+    steps:
+      - name: Read the latest saved war times
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test final-war timing
+        run: python -m unittest discover -s tests -v
+      - name: Check whether a recorded war needs a follow-up
+        id: timing
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: python github_war_check.py
+
+  capture:
+    needs: check
+    if: needs.check.outputs.due == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: war-haven-clan-update
+      cancel-in-progress: false
+    steps:
+      - name: Read the latest archive after other updates finish
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Wait until five minutes after the recorded war end
+        id: timing
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: python github_war_check.py --wait
+      - name: Capture and publish final war results
+        if: steps.timing.outputs.due == 'true'
+        env:
+          COC_API_TOKEN: ${{ secrets.COC_API_TOKEN }}
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
+          CLAN_API_ROUTE: ${{ vars.CLAN_API_ROUTE }}
+        run: python github_collector.py --post-war

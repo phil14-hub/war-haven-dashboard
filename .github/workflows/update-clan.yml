@@ -8,6 +8,7 @@ on:
       - 'Clash_Recruitment.py'
       - 'github_recruiter.py'
       - 'github_collector.py'
+      - 'war_end_updates.py'
       - '.github/workflows/update-clan.yml'
   schedule:
     - cron: '23 7 * * *'
@@ -45,6 +46,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Check automatic final-war timing
+        run: python -m unittest discover -s tests -v
       - name: Install recruiter dependency
         run: python -m pip install --disable-pip-version-check requests==2.34.2
       - name: Refresh and publish encrypted clan data

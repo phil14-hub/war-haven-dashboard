@@ -73,6 +73,36 @@ The workflow captures current/future observations; it cannot recreate missed
 historical wars. Local verification covers configuration, archive-first restore,
 API failures and publication conflicts. Live collection requires configured keys.
 
+## Automatic final-war update
+
+Each daily or manual update records known regular-war, friendly-war and CWL end
+times. The **Capture final war results** workflow uses those saved times to target
+an extra collection **five minutes after each war ends**. Your phone and website
+can remain closed; no additional secret or setup is needed.
+
+A lightweight check runs every five minutes and reads only the encrypted saved
+archive. If a known war's target is within five minutes, the capture job waits
+until that target before collecting. GitHub can delay scheduled jobs, so five
+minutes is the target rather than an exact delivery guarantee. The daily update
+continues around 7:23 AM Mountain time. The follow-up captures clan and final war
+data and retains the existing recruiter scan; daily and manual updates still run
+the recruiter.
+
+The capture job shares the existing collection lock, reads the latest archive
+again, and skips a war if its final update already finished. Completed checks and
+upcoming targets are retained inside `automaticUpdates.postWar` in the encrypted
+archive. If final player details are unavailable, it retries after ten minutes,
+for up to six hours after the end, without inventing attack counts. Old war-log
+summaries and manually entered wars do not trigger automatic capture.
+
+**Wait until the final update has finished before starting the next regular-war
+search.** Starting another search before capture can make the previous war's
+player details unavailable. The watcher can only schedule wars already recorded
+by a successful update. `CLAN_AUTO_UPDATES_ENABLED=false` pauses both workflows.
+
+Run `python -m unittest discover -s tests -v` for synthetic-data timing,
+archive-continuity, duplicate-prevention and retry checks.
+
 ## Saved settings and live war timing
 
 The top-right gear opens Settings. Home summaries, compact roster cards, 24-hour

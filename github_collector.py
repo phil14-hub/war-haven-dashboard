@@ -1,9 +1,13 @@
 """Run the existing tracker in GitHub Actions without interactive Pyto setup."""
+import argparse
 import copy
 import importlib.util
 import os
 import tempfile
 from pathlib import Path
+
+from war_end_updates import next_update, record_update
+from datetime import datetime, timezone
 
 
 REQUIRED_SECRETS = ('COC_API_TOKEN', 'DASHBOARD_PASSWORD', 'DASHBOARD_PUBLISH_TOKEN')
@@ -39,7 +43,7 @@ def load_tracker():
     return module
 
 
-def run(env=None, tracker=None):
+def run(env=None, tracker=None, *, post_war=False):
     env = os.environ if env is None else env
     config, route = settings(env)
     tracker = load_tracker() if tracker is None else tracker
@@ -48,16 +52,26 @@ def run(env=None, tracker=None):
     # Verify and restore the latest archive before asking Clash for new data.
     # Any decryption/download failure aborts without a publication.
     tracker.pull_github_history(state, config)
+    if post_war:
+        due = next_update(state)
+        if due is None or due > datetime.now(timezone.utc):
+            print('The latest archive has no pending final-war update. No duplicate collection needed.')
+            return {'published': False, 'skipped': True}
     candidate = copy.deepcopy(state)
     tracker.refresh(candidate, tracker.OfficialAPI([env['COC_API_TOKEN'].strip()]))
-    import github_recruiter
-    github_recruiter.refresh(candidate, env, API_ROUTES[route])
+    if not post_war:
+        import github_recruiter
+        github_recruiter.refresh(candidate, env, API_ROUTES[route])
     candidate['website'] = {'protected': True, 'configured': True, 'historyStored': True}
-    candidate['automaticUpdates'] = {
+    candidate['automaticUpdates'] = {**candidate.get('automaticUpdates', {}),
         'lastRunAt': tracker.now_iso(),
         'schedule': '23 7 * * *',
         'timezone': 'America/Denver',
+        'lastRunKind': 'after-war' if post_war else 'daily-or-manual',
     }
+    final_schedule = record_update(candidate)
+    print('Automatic final-war follow-up armed from a recorded end time.'
+          if final_schedule['nextUpdateAt'] else 'No pending final-war follow-up in the saved data.')
     # Only an encrypted HTML file is written; state stays in memory.
     with tempfile.TemporaryDirectory(prefix='war-haven-') as directory:
         dashboard = Path(directory) / 'index.html'
@@ -70,7 +84,10 @@ def run(env=None, tracker=None):
 
 if __name__ == '__main__':
     try:
-        run()
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument('--post-war', action='store_true',
+                            help='Collect due final war results and retain the existing recruiter scan.')
+        run(post_war=parser.parse_args().post_war)
     except ValueError as error:
         print('Setup needed:', str(error))
         raise SystemExit(1)
