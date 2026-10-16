@@ -36,7 +36,7 @@ The **Update clan dashboard** Actions workflow supports daily collection at **7:
 
 The gear opens real Settings with persistent browser preferences. Preparation wars have a live start countdown and switch to **In progress** without a new scan. Password changes are under **Leader settings** and require both the current dashboard password and GitHub owner authorization; the co-leader password alone cannot change shared access.
 
-Hover, tap, click or keyboard-focus a graph point to inspect its saved value and date. This works for war performance, clan growth and XP, member upgrades and player contributions. Click/tap pins the label; a second tap, an outside tap or Escape dismisses it.
+Hover, tap, click or keyboard-focus a graph point to inspect its saved value and date. This works for war performance, clan growth and XP, member upgrades and player contributions. Moving the mouse away clears the label and detail text. On touchscreens, tap a point to keep it visible; tap again, tap elsewhere or press Escape to dismiss it.
 
 ## Final results after a war
 

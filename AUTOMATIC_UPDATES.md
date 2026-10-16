@@ -111,9 +111,9 @@ browser. They persist across reloads and later publications. Clearing website da
 or using a different browser/device starts with its own preferences.
 
 War-performance, clan-growth, XP, member-upgrade and contribution graphs display
-the saved value, date and context when you hover or focus a point. Click or tap a
-point to keep its label open; tap it again, tap elsewhere, or press Escape to close
-the label. Exact-value tables remain available below each graph.
+the saved value, date and context when you hover or focus a point. Mouse hover labels and their detail text disappear when the pointer leaves.
+On touchscreens, tap a point to keep its label open; tap it again, tap elsewhere,
+or press Escape to close the label. Exact-value tables remain available below each graph.
 
 Preparation wars display **Preparation day**, with a countdown calculated from
 the captured start time every second. At that time the label becomes **In progress**,

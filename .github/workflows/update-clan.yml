@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'Clash_Recruitment.py'
+      - 'Clash_War_Tracker.py'
       - 'github_recruiter.py'
       - 'github_collector.py'
       - 'war_end_updates.py'
