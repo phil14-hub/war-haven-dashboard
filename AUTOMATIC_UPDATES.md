@@ -48,27 +48,26 @@ history. The collector also rejects a concurrent archive update without force.
 
 ## Everyday use
 
-Open the same website and choose **Refresh data**. The leader can enter a private
-fine-grained GitHub token restricted to this repository with **Actions: read and
-write**, then choose **Start update here**. The website verifies repository owner
-authorization, starts the cloud workflow, and follows its progress. It follows an
-already queued/running update instead of starting a duplicate. The token is never
-embedded in a publication or saved in browser storage; enter it again for a later
-request. This token does not need Contents or Secrets permission.
+Unlock the website and choose **Refresh data → Start clan update**. Recruitment
+has its own **Management → Recruiter → Refresh recruiting candidates** button.
+The shared service authorizes both through the existing unlocked session; no
+provider token is needed. Each follows its own queue and shows estimated progress.
+An already queued or running request is followed without starting a duplicate.
 
-The existing GitHub option is under **Update through GitHub instead > Open GitHub
-updater**. Choose **Run workflow**, then the green **Run workflow** button. After
-collection and publication finish, use **Load latest dashboard** to see the result.
-Both manual routes work from any internet-connected device, on Wi-Fi or cellular.
-GitHub runs the collector, so the triggering device does not need a fixed IP and
-can be closed or turned off after GitHub accepts the request. Daily collection
-also runs with the phone and website closed, around 7:23 AM Mountain time.
+Once a request is accepted, you can close the dialog, leave the page or exit the
+browser. Collection continues in the cloud. The Home icon spins while a clan
+update is queued or running. If the dashboard stays open, new data loads
+automatically without reloading the page or signing out. Filters, open reports
+and pending notes/plans are retained; hidden tabs check when visible again.
+Daily collection also runs with the phone and website closed, around 7:23 AM
+Mountain time for clan data and 7:35 AM for recruitment.
 
-The shared dashboard password alone does not authorize data collection. Keep
-leader tokens private. Set `CLAN_AUTO_UPDATES_ENABLED=false` to pause all collection.
+Repository owners can still run either workflow from GitHub. Keep owner and
+provider credentials private. Set `CLAN_AUTO_UPDATES_ENABLED=false` to pause all collection.
 The source code stays public; records are encrypted before publication.
 
-Browser edits still require export/import before a later shared publication.
+Notes and lineup drafts save automatically across leaders. Other browser edits
+still require export/import before a later shared publication.
 The workflow captures current/future observations; it cannot recreate missed
 historical wars. Local verification covers configuration, archive-first restore,
 API failures and publication conflicts. Live collection requires configured keys.

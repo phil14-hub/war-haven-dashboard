@@ -11,7 +11,8 @@ const SharedDashboardSync=(()=>{
  const combine=(...parts)=>{const result=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const p of parts){result.set(p,at);at+=p.length;}return result;};
  const context=encoder.encode('WarHavenSharedEdit:v1');
  let keys=null,proof=null,proofUntil=0,loading=null,flushing=false,saveTimer=null,refreshKind='clan',refreshTimer=null;
- const requests=new Map();
+ const requests=new Map(),completedRequests=new Set();
+ let lastStatusCheck=0;
  async function cryptoKeys(){
   if(keys)return keys;const raw=decode(config.encryptionKey);if(raw.length!==64)throw Error('Shared editing configuration needs to be refreshed.');
   keys={enc:await crypto.subtle.importKey('raw',raw.slice(0,32),'AES-CBC',false,['encrypt','decrypt']),mac:await crypto.subtle.importKey('raw',raw.slice(32),{name:'HMAC',hash:'SHA-256'},false,['sign','verify'])};raw.fill(0);return keys;
@@ -91,6 +92,23 @@ const SharedDashboardSync=(()=>{
   const mode=lineupOptions.mode,value={options:{...lineupOptions},tags:[...lineupSelection],updatedAt:new Date().toISOString()};
   edits.lineupPlans||={};edits.lineupPlans[mode]=value;persist();changed('lineupPlans',mode,value);
  }
+ function mergeSnapshotEdits(incoming){
+  const merged=WarTracker.mergeEdits(incoming,edits);
+  for(const entry of pending.values()){merged[entry.category]||={};merged[entry.category][entry.key]=JSON.parse(JSON.stringify(entry.value));}
+  return merged;
+ }
+ function setBusy(kind,request){
+  const button=$(kind==='clan'?'refresh-data':'refresh-recruiter');if(!button)return;
+  const busy=Boolean(request&&['pending','running'].includes(request.status));
+  button.classList.toggle('is-refreshing',busy);button.setAttribute('aria-busy',String(busy));
+  const label=button.querySelector('[data-refresh-label]');
+  if(label)label.textContent=busy?(request.status==='pending'?'Update queued':'Refreshing…'):(kind==='clan'?'Refresh data':'Refresh recruiting candidates');
+ }
+ function snapshotContains(request,kind){
+  if(!request?.startedAt)return true;
+  const captured=kind==='clan'?data.lastSuccessfulSync:recruiterReport.updatedAt;
+  return (Date.parse(captured)||0)>=(Date.parse(request.startedAt)||0);
+ }
  function updateProgress(request){
   const progress=$('shared-update-bar'),label=$('shared-update-label'),estimate=$('shared-update-estimate');
   if(!request){progress.value=0;label.textContent='Ready to start';estimate.textContent='';return;}
@@ -98,11 +116,17 @@ const SharedDashboardSync=(()=>{
   const percent=request.status==='completed'?100:queued?0:Math.min(95,Math.max(request.progress||0,Math.round(5+85*Math.min(1,elapsed/duration))));
   progress.value=percent;label.textContent=percent+'% · '+({pending:'Waiting to start',starting:'Starting',collecting:'Collecting data',publishing:'Saving encrypted data',deploying:'Publishing website',completed:'Complete',failed:'Update failed'}[request.phase||request.status]||'Updating');
   const minutes=seconds=>Math.max(1,Math.ceil(seconds/60))+' min';
-  estimate.textContent=queued?'Usually starts within 5 minutes, then about '+minutes(duration)+'. Cloud scheduling can take longer.':active?(elapsed<duration?'Estimated '+minutes(duration-elapsed)+' remaining.':'Taking longer than estimated. The update is still running.'):request.status==='completed'?'Published. Load the latest dashboard below.':'Your previous dashboard is still available.';
+  estimate.textContent=queued?'Usually starts within 5 minutes, then about '+minutes(duration)+'. Cloud scheduling can take longer.':active?(elapsed<duration?'Estimated '+minutes(duration-elapsed)+' remaining.':'Taking longer than estimated. The update is still running.'):request.status==='completed'?'Complete. New data appears automatically while this dashboard stays open.':'Your previous dashboard is still available.';
  }
  async function refreshStatus(kind=refreshKind){
   try{const request=(await api('/v1/refresh/status',{kind})).request;if(request)requests.set(kind,request);else requests.delete(kind);
-   if(kind===refreshKind){updateProgress(request);$('website-update-submit').disabled=Boolean(request&&['pending','running'].includes(request.status));if(request?.status==='completed')$('publication-update').hidden=false;}
+   setBusy(kind,request);
+   if(kind===refreshKind){updateProgress(request);$('website-update-submit').disabled=Boolean(request&&['pending','running'].includes(request.status));}
+   const completedKey=kind+':'+request?.id;
+   if(request?.status==='completed'&&!completedRequests.has(completedKey)){
+    await checkPublishedUpdate({force:true});
+    if(snapshotContains(request,kind))completedRequests.add(completedKey);
+   }
   }catch(error){if(kind===refreshKind)$('website-update-error').textContent=error.message;}
  }
  function showRefresh(kind='clan'){
@@ -112,18 +136,24 @@ const SharedDashboardSync=(()=>{
   $('website-update-submit').textContent=recruitment?'Start recruitment scan':'Start clan update';
   $('website-update-error').textContent='';$('website-update-submit').disabled=false;updateProgress(requests.get(kind));
   $('refresh-snapshot').textContent='Last successful '+(recruitment?'recruitment scan: '+date(recruiterReport.updatedAt):'clan snapshot: '+date(data.lastSuccessfulSync));
-  $('automated-refresh-status').textContent='Requests run in the cloud. You can close this page after a request is accepted.';
+  $('automated-refresh-status').textContent='After your request is accepted, you can leave or exit the browser. The update continues in the cloud.';
   refreshStatus(kind);if(!$('refresh-dialog').open)$('refresh-dialog').showModal();
  }
  function wireRefresh(){
   const form=$('website-update-form');
-  form.innerHTML='<p id="shared-update-description" class="small muted"></p><button id="website-update-submit" class="primary full-width" type="submit">Start clan update</button><div class="shared-update-meter"><div id="shared-update-label" role="status">Ready to start</div><progress id="shared-update-bar" value="0" max="100" aria-label="Estimated update progress"></progress><p id="shared-update-estimate" class="small muted"></p></div>';
-  form.onsubmit=async event=>{event.preventDefault();const kind=refreshKind;$('website-update-error').textContent='';$('website-update-submit').disabled=true;try{const result=await api('/v1/refresh/request',{kind});requests.set(kind,result.request);if(kind===refreshKind)updateProgress(result.request);}catch(error){$('website-update-error').textContent=error.message;$('website-update-submit').disabled=false;}};
+  form.innerHTML='<p id="shared-update-description" class="small muted"></p><p class="notice">Once your request is accepted, you can close this window, leave the page or exit the browser. The update continues in the cloud. If you keep this dashboard open, new data appears automatically without signing you out.</p><button id="website-update-submit" class="primary full-width" type="submit">Start clan update</button><div class="shared-update-meter"><div id="shared-update-label" role="status">Ready to start</div><progress id="shared-update-bar" value="0" max="100" aria-label="Estimated update progress"></progress><p id="shared-update-estimate" class="small muted"></p></div>';
+  form.onsubmit=async event=>{event.preventDefault();const kind=refreshKind;$('website-update-error').textContent='';$('website-update-submit').disabled=true;try{const result=await api('/v1/refresh/request',{kind});requests.set(kind,result.request);setBusy(kind,result.request);if(kind===refreshKind)updateProgress(result.request);}catch(error){$('website-update-error').textContent=error.message;$('website-update-submit').disabled=false;}};
   $('refresh-data').onclick=()=>showRefresh('clan');$('refresh-recruiter').onclick=()=>showRefresh('recruitment');$('settings-refresh').onclick=()=>{$('settings-dialog').close();showRefresh('clan');};
   // These controls supersede the owner-token flow after the shared service is available.
   $('refresh-dialog').querySelectorAll('[data-legacy-update]').forEach(node=>node.hidden=true);
-  $('howto-refresh').textContent='Use Update dashboard for clan, war, member and Capital data. Use Management → Recruiter → Refresh recruiting candidates for recruitment only. Each runs independently. The estimate includes a cloud queue and a running progress bar; 100% means publication is confirmed. Choose Load latest dashboard and unlock again when it finishes.';
-  clearInterval(refreshTimer);refreshTimer=setInterval(()=>{if($('refresh-dialog').open)refreshStatus(refreshKind);},5000);
+  $('howto-refresh').textContent='Use Update dashboard for clan, war, member and Capital data. Use Management → Recruiter → Refresh recruiting candidates for recruitment only. Each runs independently. The estimate includes a cloud queue and a running progress bar; 100% means publication is confirmed. You can leave or exit after the request is accepted. If the dashboard stays open, the new data appears automatically and you stay unlocked.';
+  const poll=()=>{
+   if(document.hidden)return;
+   const active=[...requests.values()].some(request=>['pending','running'].includes(request.status));
+   if(!$('refresh-dialog').open&&!active&&Date.now()-lastStatusCheck<15000)return;
+   lastStatusCheck=Date.now();refreshStatus('clan');refreshStatus('recruitment');
+  };
+  clearInterval(refreshTimer);refreshTimer=setInterval(poll,5000);poll();
  }
  async function start(){
   if(!enabled)return;
@@ -142,5 +172,5 @@ const SharedDashboardSync=(()=>{
   catch(error){status(error.message+' Local notes remain available.');}
   setInterval(()=>{if(!document.hidden)load().catch(error=>status(error.message));if(pending.size)flush();},20000);
  }
- return {start,changed};
+ return {start,changed,mergeSnapshotEdits};
 })();
