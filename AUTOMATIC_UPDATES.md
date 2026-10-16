@@ -9,8 +9,9 @@ gated by `CLAN_AUTO_UPDATES_ENABLED=true`. No credentials are embedded in code.
 
 ## One-time setup
 
-1. Import your old `war_tracker_state.json` once to preserve past records. The
-   published baseline does not contain your device's existing history.
+1. Keep the existing encrypted archive in `data/war_tracker_state.enc.json`.
+   War Haven's earlier device history has already been uploaded. The automatic
+   collector restores that archive before collecting new observations.
 2. Decide how GitHub will reach the Clash API. The standard GitHub runner has
    changing outbound IPs. For the RoyaleAPI route, create a separate Clash of
    Clans developer API key allowing **45.79.218.79**. This route sends that key
@@ -43,11 +44,24 @@ history. The collector also rejects a concurrent archive update without force.
 
 ## Everyday use
 
-Open the same website and choose **Refresh data > Open GitHub updater**. On GitHub,
-choose **Run workflow**, then the green **Run workflow** button. After collection
-and publication finish, use **Load latest dashboard** to see the result. GitHub
-requires an account authorized to run workflows; the shared dashboard password
-does not grant that access. Set `CLAN_AUTO_UPDATES_ENABLED=false` to pause all collection.
+Open the same website and choose **Refresh data**. The leader can enter a private
+fine-grained GitHub token restricted to this repository with **Actions: read and
+write**, then choose **Start update here**. The website verifies repository owner
+authorization, starts the cloud workflow, and follows its progress. It follows an
+already queued/running update instead of starting a duplicate. The token is never
+embedded in a publication or saved in browser storage; enter it again for a later
+request. This token does not need Contents or Secrets permission.
+
+The existing GitHub option is under **Update through GitHub instead > Open GitHub
+updater**. Choose **Run workflow**, then the green **Run workflow** button. After
+collection and publication finish, use **Load latest dashboard** to see the result.
+Both manual routes work from any internet-connected device, on Wi-Fi or cellular.
+GitHub runs the collector, so the triggering device does not need a fixed IP and
+can be closed or turned off after GitHub accepts the request. Daily collection
+also runs with the phone and website closed, around 7:23 AM Mountain time.
+
+The shared dashboard password alone does not authorize data collection. Keep
+leader tokens private. Set `CLAN_AUTO_UPDATES_ENABLED=false` to pause all collection.
 The source code stays public; records are encrypted before publication.
 
 Browser edits still require export/import before a later shared publication.
@@ -61,6 +75,11 @@ The top-right gear opens Settings. Home summaries, compact roster cards, 24-hour
 times, countdown seconds, last-section navigation, and update checks save in this
 browser. They persist across reloads and later publications. Clearing website data
 or using a different browser/device starts with its own preferences.
+
+War-performance, clan-growth, XP, member-upgrade and contribution graphs display
+the saved value, date and context when you hover or focus a point. Click or tap a
+point to keep its label open; tap it again, tap elsewhere, or press Escape to close
+the label. Exact-value tables remain available below each graph.
 
 Preparation wars display **Preparation day**, with a countdown calculated from
 the captured start time every second. At that time the label becomes **In progress**,

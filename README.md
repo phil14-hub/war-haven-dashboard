@@ -11,7 +11,7 @@ The website and complete clan history are password encrypted. Source code is pub
 3. Enter a fine-grained GitHub publishing token for **only this repository**, with **Contents: Read and write** and **Pages: Read**. GitHub’s connected ChatGPT plugin handles edits in ChatGPT; the collector running on your device needs its own token. Enter it in Pyto, never in an issue, commit, HTML file or chat message.
 4. The collector merges the encrypted GitHub archive with your device’s existing records, refreshes Clash data, and uploads matching encrypted history and dashboard files in one commit. The website then opens in your browser.
 
-The initial publication contains an **empty baseline** because actual collected clan records remain on your device. Your first collector run uploads those records. A published empty dashboard does not mean the clan has zero members or no war history.
+The published encrypted archive already contains War Haven's collected clan records. Future collectors restore and merge those records before publishing. Keep the archive when updating code.
 
 ## Files in this repository
 
@@ -26,9 +26,11 @@ GitHub commits retain previous encrypted revisions. The collector refuses to ove
 
 ## Automatic updates on GitHub
 
-The **Update clan dashboard** Actions workflow supports daily collection at **7:23 AM Mountain time** and a manual **Run workflow** option. The website's **Refresh data** button links to the authenticated GitHub updater. It is installed inactive. See [the one-time setup](AUTOMATIC_UPDATES.md) before enabling it. No API keys or passwords belong in source files.
+The **Update clan dashboard** Actions workflow supports daily collection at **7:23 AM Mountain time** and a manual **Run workflow** option. **Refresh data > Start update here** also starts and monitors an update from the website using a private repository-owner token with **Actions: read and write**. The token is used in memory for that request and is not saved in browser storage. Both routes run on GitHub, so the phone can be off after a request is accepted. See [the one-time setup](AUTOMATIC_UPDATES.md) for credentials and permissions. No API keys or passwords belong in source files.
 
 The gear opens real Settings with persistent browser preferences. Preparation wars have a live start countdown and switch to **In progress** without a new scan. Password changes are under **Leader settings** and require both the current dashboard password and GitHub owner authorization; the co-leader password alone cannot change shared access.
+
+Hover, tap, click or keyboard-focus a graph point to inspect its saved value and date. This works for war performance, clan growth and XP, member upgrades and player contributions. Click/tap pins the label; a second tap, an outside tap or Escape dismisses it.
 
 ## Daily use
 
