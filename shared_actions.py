@@ -9,7 +9,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 BACKEND_URL = 'https://war-haven-actions.readydrake18.chatgpt.site'
-# Activate this branch only after the backend's co-leader visitor access is approved.
+# The service requires current dashboard-passphrase proof on every data/action request.
 ENABLED = True
 CONTEXT = b'WarHavenSharedEdit:v1'
 
@@ -33,7 +33,8 @@ class Client:
                     raise SharedActionsError('Invalid shared service challenge.')
                 raw = hashlib.pbkdf2_hmac('sha256', self.password.encode(), salt, rounds, dklen=64)
                 self.proof = base64.b64encode(raw[32:]).decode()
-            headers = {'Content-Type': 'application/json'}
+            headers = {'Content-Type': 'application/json',
+                       'User-Agent': 'WarHavenDashboard/1.19 (+https://github.com/phil14-hub/war-haven-dashboard)'}
             if self.proof:
                 headers['X-War-Haven-Proof'] = self.proof
             request = Request(BACKEND_URL + path,
@@ -105,7 +106,7 @@ def pull(state, client, tracker):
             tracker.validate_lineup_edits({'lineupPlans': {key: value}})
         # The service timestamp resolves updates independently of device clocks.
         edits[category][key] = {**value, 'updatedAt': record['updatedAt']}
-    merged = tracker.merge_edits(state.get('edits'))
+    merged = tracker.merge_edits(state.get('edits'), {})
     for category in ('notes', 'lineupPlans'):
         merged[category].update(edits[category])
     state['edits'] = merged
@@ -131,6 +132,13 @@ class UpdateRequest:
     def __init__(self, client, kind, request=None):
         self.client, self.kind, self.request = client, kind, request
         self.lease = None
+        if ENABLED and self.request is None:
+            try:
+                # A scheduled or owner-triggered run gets the same visible progress
+                # as a browser request, without starting another collector.
+                self.request = client.request('/v1/refresh/request', {'kind': kind})['request']
+            except SharedActionsError:
+                print('::warning::This run could not create a new progress entry; collection will continue.')
 
     def claim(self):
         if self.request:
@@ -151,5 +159,6 @@ class UpdateRequest:
                 self.client.request('/v1/refresh/finish', {'kind': self.kind, 'id': self.request['id'],
                                     'lease': self.lease, 'ok': bool(result and result.get('published')),
                                     'commit': result.get('commit') if result else None})
+                print('Independent ' + self.kind + ' update status synchronized.')
             except SharedActionsError:
                 print('::warning::Update status could not be synchronized. Check the latest dashboard before retrying.')

@@ -30,6 +30,36 @@ class DashboardTests(unittest.TestCase):
   broken={**fixture['envelope'],'tag':base64.b64encode(bytes(32)).decode()}
   with self.assertRaises(shared_actions.SharedActionsError):shared_actions.decrypt_record(broken,fixture['key'],tracker)
 
+ def test_shared_record_import_uses_actual_tracker_merge_and_server_revision(self):
+  import hashlib,hmac
+  result=subprocess.run(['node','tests/shared_dashboard.test.cjs'],cwd=ROOT,text=True,capture_output=True,check=True)
+  fixture=json.loads(result.stdout);raw=base64.b64decode(fixture['key'])
+  state=tracker.new_state(tracker.DEFAULT_CLAN_TAG)
+  state['sharedActions']={'encryptionKey':fixture['key']}
+  state['edits']['notes']['#P0Y']={'text':'Old device-clock value','updatedAt':'2099-01-01T00:00:00Z'}
+  record={'id':hmac.new(raw[32:],b'notes:#P0Y',hashlib.sha256).hexdigest(),'kind':'notes','envelope':fixture['envelope'],'updatedAt':'2030-01-01T00:00:00Z'}
+  client=SimpleNamespace(request=lambda path:{'records':[record]})
+  with patch.object(shared_actions,'ENABLED',True):shared_actions.pull(state,client,tracker)
+  self.assertEqual(state['edits']['notes']['#P0Y']['text'],'Shared fixture')
+  self.assertEqual(state['edits']['notes']['#P0Y']['updatedAt'],record['updatedAt'])
+
+ def test_first_shared_service_activation_preserves_existing_notes(self):
+  state=tracker.new_state(tracker.DEFAULT_CLAN_TAG);state['edits']['notes']['#P0Y']={'text':'Existing note'}
+  client=SimpleNamespace(request=lambda path:{'records':[]})
+  with patch.object(shared_actions,'ENABLED',True):shared_actions.pull(state,client,tracker)
+  self.assertEqual(state['edits']['notes']['#P0Y']['text'],'Existing note')
+  self.assertTrue(state['sharedActions']['enabled'])
+
+ def test_scheduled_run_reports_its_own_independent_progress(self):
+  calls=[]
+  def request(path,payload):
+   calls.append((path,payload));return {'request':{'id':'queued','lease':'leased'}}
+  with patch.object(shared_actions,'ENABLED',True):
+   update=shared_actions.UpdateRequest(SimpleNamespace(request=request),'recruitment')
+   update.claim();update.progress('collecting',20)
+  self.assertEqual([payload['kind'] for _,payload in calls],['recruitment']*3)
+  self.assertEqual([path for path,_ in calls],['/v1/refresh/request','/v1/refresh/claim','/v1/refresh/progress'])
+
  def test_shared_key_survives_archive_merge_and_encrypted_round_trip(self):
   state=tracker.new_state(tracker.DEFAULT_CLAN_TAG)
   with patch.object(shared_actions,'ENABLED',True):shared_actions.prepare(state)
@@ -85,7 +115,7 @@ class DashboardTests(unittest.TestCase):
     if tag=='script' and self.current is not None:self.scripts.append(''.join(self.current));self.current=None
   with tempfile.TemporaryDirectory() as folder:
    output=Path(folder)/'index.html';tracker.write_dashboard(tracker.new_state(tracker.DEFAULT_CLAN_TAG),output)
-   html=output.read_text();self.assertNotIn('<iframe',html);self.assertNotIn('__RECRUITMENT',html);self.assertNotIn('__SHARED_DASHBOARD',html)
+   html=output.read_text();self.assertNotIn('website-update-token',html);self.assertNotIn('Private leader update token',html);self.assertNotIn('<iframe',html);self.assertNotIn('__RECRUITMENT',html);self.assertNotIn('__SHARED_DASHBOARD',html)
    self.assertIn('How to Use',html);self.assertIn('prefers-reduced-motion',html)
    parser=Scripts();parser.feed(html)
    for index,script in enumerate(parser.scripts):

@@ -6,7 +6,7 @@ encrypted website/history files. Pyto does not need to stay open.
 
 The [recruiter](RECRUITER.md) has an independent **Update recruitment** workflow at about 7:35 AM Mountain time, with its own manual trigger. A clan update never scans recruiting candidates, and a recruitment scan never refreshes the clan snapshot. Both restore the latest encrypted archive and use the same publication lock to prevent conflicting writes.
 
-The [shared actions service](SHARED_ACTIONS.md), prepared but disabled pending the hosting audience decision, accepts independent password-authorized requests without GitHub tokens in the browser. The five-minute watcher checks each queue and recorded war ends. Running progress uses collection/publication stages plus an estimate from prior duration. It reaches 100% only on confirmed publication.
+The [shared actions service](SHARED_ACTIONS.md), enabled for dashboard-passphrase holders, accepts independent password-authorized requests without GitHub tokens in the browser. The five-minute watcher checks each queue and recorded war ends. Running progress uses collection/publication stages plus an estimate from prior duration. It reaches 100% only on confirmed publication.
 
 **Status on installation: inactive.** Both scheduled and manual collection are
 gated by `CLAN_AUTO_UPDATES_ENABLED=true`. No credentials are embedded in code.
