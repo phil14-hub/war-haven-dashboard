@@ -4,6 +4,10 @@ The **Update clan dashboard** workflow runs the existing collector on GitHub,
 restores the encrypted archive, collects fresh Clash data, and publishes matching
 encrypted website/history files. Pyto does not need to stay open.
 
+The [recruiter](RECRUITER.md) also runs in this workflow. Its report and persistent
+scan history share the encrypted archive, using the existing credentials. Both
+daily and manual updates refresh recruiting candidates as well as clan data.
+
 **Status on installation: inactive.** Both scheduled and manual collection are
 gated by `CLAN_AUTO_UPDATES_ENABLED=true`. No credentials are embedded in code.
 

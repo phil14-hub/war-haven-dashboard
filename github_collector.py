@@ -50,6 +50,8 @@ def run(env=None, tracker=None):
     tracker.pull_github_history(state, config)
     candidate = copy.deepcopy(state)
     tracker.refresh(candidate, tracker.OfficialAPI([env['COC_API_TOKEN'].strip()]))
+    import github_recruiter
+    github_recruiter.refresh(candidate, env, API_ROUTES[route])
     candidate['website'] = {'protected': True, 'configured': True, 'historyStored': True}
     candidate['automaticUpdates'] = {
         'lastRunAt': tracker.now_iso(),

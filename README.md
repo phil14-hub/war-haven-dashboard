@@ -26,6 +26,12 @@ GitHub commits retain previous encrypted revisions. The collector refuses to ove
 
 ## Automatic updates on GitHub
 
+The [recruiter](RECRUITER.md) now runs with the daily dashboard update, using the
+existing secrets and approved API route. Its navy/gold report appears under
+**Manage > Recruiter**. The first cloud scan establishes a baseline, and later
+scans detect and verify departures. Recruiter history is retained in the same
+encrypted clan archive. Invitations remain manual.
+
 The **Update clan dashboard** Actions workflow supports daily collection at **7:23 AM Mountain time** and a manual **Run workflow** option. **Refresh data > Start update here** also starts and monitors an update from the website using a private repository-owner token with **Actions: read and write**. The token is used in memory for that request and is not saved in browser storage. Both routes run on GitHub, so the phone can be off after a request is accepted. See [the one-time setup](AUTOMATIC_UPDATES.md) for credentials and permissions. No API keys or passwords belong in source files.
 
 The gear opens real Settings with persistent browser preferences. Preparation wars have a live start countdown and switch to **In progress** without a new scan. Password changes are under **Leader settings** and require both the current dashboard password and GitHub owner authorization; the co-leader password alone cannot change shared access.

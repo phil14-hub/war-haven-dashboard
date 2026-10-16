@@ -2,6 +2,13 @@ name: Update clan dashboard
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Clash_Recruitment.py'
+      - 'github_recruiter.py'
+      - 'github_collector.py'
+      - '.github/workflows/update-clan.yml'
   schedule:
     - cron: '23 7 * * *'
       timezone: America/Denver
@@ -38,10 +45,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install recruiter dependency
+        run: python -m pip install --disable-pip-version-check requests==2.34.2
       - name: Refresh and publish encrypted clan data
         env:
           COC_API_TOKEN: ${{ secrets.COC_API_TOKEN }}
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
           DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
           CLAN_API_ROUTE: ${{ vars.CLAN_API_ROUTE }}
+          RECRUITER_ENABLED: ${{ vars.RECRUITER_ENABLED }}
+          RECRUITER_MAX_CLANS: ${{ vars.RECRUITER_MAX_CLANS }}
         run: python github_collector.py
