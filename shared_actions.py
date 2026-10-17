@@ -8,7 +8,7 @@ import secrets
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-BACKEND_URL = 'https://war-haven-actions.readydrake18.chatgpt.site'
+BACKEND_URL = 'https://portal.warhavenclan.com'
 # The service requires current dashboard-passphrase proof on every data/action request.
 ENABLED = True
 CONTEXT = b'WarHavenSharedEdit:v1'
@@ -162,3 +162,4 @@ class UpdateRequest:
                 print('Independent ' + self.kind + ' update status synchronized.')
             except SharedActionsError:
                 print('::warning::Update status could not be synchronized. Check the latest dashboard before retrying.')
+

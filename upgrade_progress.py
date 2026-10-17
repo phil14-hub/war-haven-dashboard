@@ -41,12 +41,20 @@ def _group(items, available=True, equipment=False):
     done = sum(i['newWorkDone'] for i in items) if known else None
     backlog = sum(i['earlierWorkRemaining'] for i in items) if known else None
     remaining = sum(i['remainingLevels'] or 0 for i in items) if known else None
+    total_work = sum(i['totalWork'] for i in items)
+    completed_work = sum(i['completedWork'] for i in items) if known else None
+    completion = 100 * completed_work / total_work if known and total_work else None
+    if completion is not None:
+        completion = 100.0 if remaining == 0 else min(99.9, math.floor(completion * 10) / 10)
     percent = 100 * (done - backlog) / new_work if known and new_work else None
     if equipment:
         percent = 100 * cur / maximum if known and maximum else None
     if percent is not None:
         percent = round(percent, 1) if remaining == 0 else min(99.9, math.floor(percent * 10) / 10)
     return {'current': cur, 'maximum': maximum, 'previousMaximum': previous,
+            'completionPercent': completion, 'completionMethod': 'all-upgrade-work-v1',
+            'totalWork': total_work, 'completedWork': completed_work,
+            'remainingWork': total_work - completed_work if known else None,
             'percent': percent, 'newWork': new_work, 'newWorkDone': done,
             'earlierWorkRemaining': backlog, 'remainingLevels': remaining,
             'earlierLevelsRemaining': sum(i['earlierLevelsRemaining'] or 0 for i in items) if known else None,
@@ -90,6 +98,8 @@ def army_progress(profile, ignored=()):
             level = None
         row = {'name': unit['name'], 'id': unit['id'], 'level': level, 'maximum': maximum,
                'previousMaximum': previous, 'unlocked': bool(item),
+               'totalWork': _work(unit, maximum),
+               'completedWork': _work(unit, level) if level is not None else 0,
                'remainingLevels': maximum - level if level is not None else None,
                'earlierLevelsRemaining': max(0, previous - level) if level is not None else None,
                'newWork': _work(unit, maximum) - _work(unit, previous),
@@ -112,7 +122,7 @@ def army_progress(profile, ignored=()):
     result['groups']['laboratory'] = _group(lab_items, all(result['groups'][g]['available'] for g in ('troops', 'spells', 'siege') if sources[g]))
     combined = _group([i for g, items in sources.items() if g != 'equipment' for i in items],
                       not unknown and all(v['available'] for k, v in result['groups'].items() if k != 'equipment' and v['count']))
-    for key in ('percent', 'current', 'maximum', 'newWork', 'newWorkDone', 'earlierWorkRemaining', 'remainingLevels', 'earlierLevelsRemaining', 'isMaxed'):
+    for key in ('percent', 'completionPercent', 'completionMethod', 'totalWork', 'completedWork', 'remainingWork', 'current', 'maximum', 'newWork', 'newWorkDone', 'earlierWorkRemaining', 'remainingLevels', 'earlierLevelsRemaining', 'isMaxed'):
         result[key] = combined[key]
     if result.get('percent') is not None and result['percent'] < 0:
         result['explanation'] = f"Behind TH{th - 1} maximum: {combined['earlierLevelsRemaining']} earlier upgrade levels remain unfinished."
@@ -121,3 +131,4 @@ def army_progress(profile, ignored=()):
     else:
         result['explanation'] = '0% starts at the previous Town Hall maximum; 100% completes this Town Hall.'
     return result
+
