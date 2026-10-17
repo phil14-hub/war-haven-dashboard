@@ -1,5 +1,5 @@
 var MemberAccounts=(()=>{
- const base=location.pathname.startsWith('/members')?location.origin:'https://war-haven-actions.readydrake18.chatgpt.site';
+ const base=location.pathname.startsWith('/members')?location.origin:'https://portal.warhavenclan.com';
  const $=id=>document.getElementById(id),escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const date=v=>typeof WarHavenUI!=='undefined'?WarHavenUI.date(v):v?new Date(v).toLocaleString():'Not captured';
  const pages={pending:['account-approvals','accounts','Account Approvals'],dashboards:['player-dashboards','playerdashboards','Player Dashboards'],history:['approval-history','approvalhistory','Approval History']};
@@ -81,3 +81,4 @@ var MemberAccounts=(()=>{
  function start(){if(timer)return;timer=setInterval(()=>{const host=active&&$(active.hostId);if(!document.hidden&&host?.querySelector('[data-member-management]')&&!host.closest('.hidden')&&!dialog&&!host.querySelector('input:focus,textarea:focus,select:focus')&&![...host.querySelectorAll('[data-owner-token],#member-news-title,#member-news-body,[data-account-note]')].some(n=>n.matches('[data-owner-token]')?Boolean(n.value):n.value!==n.defaultValue))open(active.view,active.hostId);},30000);}
  return {open,start};
 })();
+

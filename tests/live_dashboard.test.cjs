@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const fixture=JSON.parse(fs.readFileSync(0,'utf8')),nodes={};
 function node(id,overrides={}){
- return nodes[id]||=(Object.assign({id,type:'text',tagName:'INPUT',value:'',checked:false,hidden:false,open:false,scrollTop:0,scrollLeft:0,focus(){context.document.activeElement=this;},setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}},overrides));
+ return nodes[id]||=(Object.assign({id,dataset:{},type:'text',tagName:'INPUT',value:'',checked:false,hidden:false,open:false,scrollTop:0,scrollLeft:0,focus(){context.document.activeElement=this;},setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}},overrides));
 }
 node('search').value='saved search';node('manual-opponent').value='Unsaved opponent';
 node('raid-select',{tagName:'SELECT',options:[{value:'recent'},{value:'older'}],value:'older',onchange(){raidChanges++;}});
@@ -23,7 +23,7 @@ const context={console,URL,Date,AbortSignal,JSON,Uint8Array,Map,Set,location:{pr
  openPlayer(tag){assert.equal(tag,'#P0Y');nodes['player-notes'].value=context.edits.notes[tag].text;nodes['player-dialog'].open=true;},
  openRecruiter(){context.renderedRecruit=context.recruiterReport.groups.new[0].name;nodes['recruit-search'].value='';},
  DOMParser:class {parseFromString(html){return {getElementById(id){const content=html.match(new RegExp('<script[^>]*id="'+id+'"[^>]*>([\\s\\S]*?)</script>'));return content?{textContent:content[1]}:null;}};}},
- async fetch(url,options){fetches.push(options.method||'GET');if(failFetch)throw Error('Offline');return {ok:true,headers:{get:name=>name==='etag'?etag:null},text:async()=>'<script id="protected-payload" type="application/json">'+JSON.stringify({tag:publicationTag})+'</script>'};}
+ async fetch(url,options){assert.equal(options.credentials,'same-origin');fetches.push(options.method||'GET');if(failFetch)throw Error('Offline');return {ok:true,headers:{get:name=>name==='etag'?etag:null},text:async()=>'<script id="protected-payload" type="application/json">'+JSON.stringify({tag:publicationTag})+'</script>'};}
 };
 vm.createContext(context);vm.runInContext(fixture.trackerJS,context);
 const app=vm.runInContext(fs.readFileSync('live_dashboard.js','utf8')+';DashboardLiveUpdates',context);
@@ -52,3 +52,4 @@ const app=vm.runInContext(fs.readFileSync('live_dashboard.js','utf8')+';Dashboar
  context.document.hidden=true;fetches=[];assert.equal(await app.check({force:true}),false);assert.deepEqual(fetches,[]);
  assert.ok(invalidations>=3);console.log('Authenticated data-only updates, independent recruitment, retained drafts, page, player report, controls, focus, scroll, retries and rollback passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+

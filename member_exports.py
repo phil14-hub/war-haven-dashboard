@@ -125,7 +125,7 @@ def build_snapshot(state, tracker):
             if entry and entry.get('league', {}).get('points') is not None:
                 league_series.append({'at': sample['at'], 'value': entry['league']['points'], 'detail': entry['league'].get('name', '')})
         army = tracker.army_progress(profile)
-        army_series = [{'at': p['at'], 'value': p['percent'], 'townHall': p.get('townHall'), 'detail': 'TH ' + str(p.get('townHall'))} for p in state.get('memberProgressHistory', {}).get(tag, []) if p.get('method') == 'th-work-v2' and p.get('at') and p.get('percent') is not None]
+        army_series = [{'at': p['at'], 'value': p['completionPercent'], 'townHall': p.get('townHall'), 'detail': 'TH ' + str(p.get('townHall'))} for p in state.get('memberProgressHistory', {}).get(tag, []) if p.get('method') == 'th-work-v2' and p.get('at') and p.get('completionPercent') is not None]
         badges = []
         for condition, label in [(stats['used'] >= 10, '10 confirmed war attacks'), (stats['stars'] >= 30, '30 recorded war stars'),
                                  (capital is not None and capital >= 10000, '10,000 confirmed Capital Gold'),
@@ -138,7 +138,7 @@ def build_snapshot(state, tracker):
                 'seasonDonations': player.get('donations'), 'donationsReceived': player.get('donationsReceived'),
                 'capitalGold': capital, 'capitalSeries': capital_series, 'donationSeries': donations,
                 'raidLoot': sum(completed_loot) if completed_loot else None, 'raids': raids, 'wars': own_wars,
-                'warStats': stats, 'leagueSeries': league_series, 'armySeries': army_series, 'armyPercent': army.get('percent'), 'army': army,
+                'warStats': stats, 'leagueSeries': league_series, 'armySeries': army_series, 'armyPercent': army.get('completionPercent'), 'army': army,
                 'heroes': [{'name': h['name'], 'level': h['level'], 'maximum': h['maximum']} for h in army.get('groups', {}).get('heroes', {}).get('items', [])],
                 'achievements': badges}
         members[tag] = view
@@ -189,3 +189,4 @@ def publish(state, dashboard, client, password, tracker):
     raw_bytes = len(json.dumps(state, ensure_ascii=False, separators=(',', ':')).encode())
     print('Storage check: complete uncompressed history ' + str(raw_bytes) + ' bytes of the 52428800-byte safeguard; leadership publication ' + str(dashboard.stat().st_size) + ' bytes.')
     return result
+

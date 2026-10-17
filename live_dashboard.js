@@ -1,7 +1,7 @@
 const DashboardLiveUpdates=(()=>{
  let etag=null,checking=null,latestToken=window.warHavenEnvelope?.tag||null;
  const pendingEdits=incoming=>typeof SharedDashboardSync!=='undefined'?SharedDashboardSync.mergeSnapshotEdits(incoming):WarTracker.mergeEdits(incoming,edits);
- function notice(message){const banner=$('publication-update');if(!banner)return;banner.hidden=!message;if(message)$('publication-message').textContent=message;}
+ function notice(message){const banner=$('publication-update');if(!banner)return;banner.hidden=!message;banner.dataset.tone='warning';if(message)$('publication-message').textContent=message;}
  function captureView(){
   const controls=[];
   document.querySelectorAll('input[id],select[id],textarea[id]').forEach(el=>{
@@ -45,11 +45,12 @@ const DashboardLiveUpdates=(()=>{
  }
  async function readPublication(){
   const url=new URL(location.href);url.hash='';url.searchParams.set('_snapshot',Date.now());
-  const response=await fetch(url.href,{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(30000)});
+  const response=await fetch(url.href,{cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(30000)});
+  if(response.status===401||response.status===403||response.redirected&&new URL(response.url).pathname!==url.pathname)throw Error('Your sign-in expired. Sign in again to receive updates; your current dashboard remains open.');
   if(!response.ok)throw Error('Could not load the latest snapshot. It will retry automatically.');
   const documentHTML=new DOMParser().parseFromString(await response.text(),'text/html');
   const payloadNode=documentHTML.getElementById('protected-payload');
-  if(!payloadNode)throw Error('The published update could not be verified. Your current dashboard remains open.');
+  if(!payloadNode)throw Error('The update service did not return a dashboard snapshot. Your current dashboard remains open; updates will retry automatically.');
   const payload=JSON.parse(payloadNode.textContent);
   const nextEtag=response.headers.get('etag')||response.headers.get('last-modified');
   if(payload.tag===latestToken){etag=nextEtag||etag;return false;}
@@ -66,7 +67,7 @@ const DashboardLiveUpdates=(()=>{
   checking=(async()=>{
    try{
     if(!force&&etag){
-     const head=await fetch(location.href.split('#')[0],{method:'HEAD',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(15000)});
+     const head=await fetch(location.href.split('#')[0],{method:'HEAD',cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(15000)});
      if(!head.ok)throw Error('Could not check the latest snapshot. It will retry automatically.');
      const current=head.headers.get('etag')||head.headers.get('last-modified');
      if(current&&current===etag){notice('');return false;}
@@ -78,3 +79,4 @@ const DashboardLiveUpdates=(()=>{
  }
  return {check,applySnapshot};
 })();
+
