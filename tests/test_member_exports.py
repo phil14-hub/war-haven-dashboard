@@ -39,7 +39,7 @@ class MemberExportTests(unittest.TestCase):
   state=self.state();base={'id':'war','kind':'Regular','endTime':'2030-01-02T00:00:00Z','state':'warEnded','final':True,'rosterComplete':True,'attacksPerMember':2,'participants':[{'tag':'#P0Y','attacksUsed':2,'starsEarned':5,'attacks':[{'stars':2},{'stars':3}]}]}
   state['wars']=[base,{**copy.deepcopy(base),'id':'incomplete','final':False}]
   result=member_exports.build_snapshot(state,tracker)['members']['#P0Y']['warStats']
-  self.assertEqual(result,{'used':2,'allowed':2,'appearances':1,'stars':5,'attacks':2,'triples':1})
+  self.assertEqual(result,{'used':2,'allowed':2,'appearances':1,'stars':5,'attacks':2,'triples':1,'destruction':0,'destructionAttacks':0})
   state['edits']['exceptions']['war::#P0Y']={'value':True}
   self.assertEqual(member_exports.build_snapshot(state,tracker)['members']['#P0Y']['warStats']['allowed'],0)
 

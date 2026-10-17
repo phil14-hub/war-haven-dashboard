@@ -78,7 +78,7 @@ def build_snapshot(state, tracker):
         capital, capital_series = capital_evidence(history, stamp(at))
         donations = donation_evidence(history, stamp(at))
         own_wars = []
-        stats = {'used': 0, 'allowed': 0, 'appearances': 0, 'stars': 0, 'attacks': 0, 'triples': 0}
+        stats = {'used': 0, 'allowed': 0, 'appearances': 0, 'stars': 0, 'attacks': 0, 'triples': 0, 'destruction': 0, 'destructionAttacks': 0}
         for war in sorted(wars.values(), key=lambda w: stamp(w.get('endTime'))):
             if war.get('kind') not in ('Regular', 'CWL'):
                 continue
@@ -98,7 +98,16 @@ def build_snapshot(state, tracker):
             if count(used) and count(allowed) and used <= allowed and not excused:
                 stats['used'] += used
                 stats['allowed'] += allowed
-            for attack in participant.get('attacks', []):
+            seen_attacks = set()
+            for index, attack in enumerate(participant.get('attacks', [])):
+                attack_id = attack.get('order', index)
+                if attack_id in seen_attacks:
+                    continue
+                seen_attacks.add(attack_id)
+                destruction = attack.get('destructionPercentage')
+                if isinstance(destruction, (int, float)) and not isinstance(destruction, bool) and 0 <= destruction <= 100:
+                    stats['destruction'] += destruction
+                    stats['destructionAttacks'] += 1
                 if count(attack.get('stars')) and attack['stars'] <= 3:
                     stats['attacks'] += 1
                     stats['stars'] += attack['stars']
@@ -114,9 +123,9 @@ def build_snapshot(state, tracker):
         for sample in state.get('leagueHistory', []):
             entry = next((p for p in sample.get('members', []) if tracker.normalize_tag(p.get('tag')) == tag), None)
             if entry and entry.get('league', {}).get('points') is not None:
-                league_series.append({'at': sample['at'], 'value': entry['league']['points']})
-        army = state.get('memberProgress', {}).get(tag) or {}
-        army_series = [{'at': p['at'], 'value': p['percent']} for p in state.get('memberProgressHistory', {}).get(tag, []) if p.get('at') and p.get('percent') is not None]
+                league_series.append({'at': sample['at'], 'value': entry['league']['points'], 'detail': entry['league'].get('name', '')})
+        army = tracker.army_progress(profile)
+        army_series = [{'at': p['at'], 'value': p['percent'], 'townHall': p.get('townHall'), 'detail': 'TH ' + str(p.get('townHall'))} for p in state.get('memberProgressHistory', {}).get(tag, []) if p.get('method') == 'th-work-v2' and p.get('at') and p.get('percent') is not None]
         badges = []
         for condition, label in [(stats['used'] >= 10, '10 confirmed war attacks'), (stats['stars'] >= 30, '30 recorded war stars'),
                                  (capital is not None and capital >= 10000, '10,000 confirmed Capital Gold'),
@@ -127,15 +136,20 @@ def build_snapshot(state, tracker):
                 'role': player.get('role'), 'since': history.get('since'), 'warPreference': player.get('warPreference'),
                 'league': {'points': league.get('points'), 'name': league.get('name') or league.get('tier')},
                 'seasonDonations': player.get('donations'), 'donationsReceived': player.get('donationsReceived'),
-                'capitalGold': capital, 'capitalSeries': capital_series[-730:], 'donationSeries': donations[-730:],
+                'capitalGold': capital, 'capitalSeries': capital_series, 'donationSeries': donations,
                 'raidLoot': sum(completed_loot) if completed_loot else None, 'raids': raids, 'wars': own_wars,
-                'warStats': stats, 'leagueSeries': league_series[-730:], 'armySeries': army_series[-730:], 'armyPercent': army.get('percent'),
-                'heroes': [{'name': h.get('name'), 'level': h.get('level')} for h in profile.get('heroes', []) if h.get('village', 'home') == 'home'],
+                'warStats': stats, 'leagueSeries': league_series, 'armySeries': army_series, 'armyPercent': army.get('percent'), 'army': army,
+                'heroes': [{'name': h['name'], 'level': h['level'], 'maximum': h['maximum']} for h in army.get('groups', {}).get('heroes', {}).get('items', [])],
                 'achievements': badges}
         members[tag] = view
         comparisons.append({'tag': tag, 'name': view['name'], 'townHallLevel': view['townHallLevel'], 'leaguePoints': league.get('points'),
                             'seasonDonations': view['seasonDonations'], 'capitalGold': capital, 'warStars': stats['stars'] if stats['attacks'] else None,
-                            'raidLoot': view['raidLoot'], 'attackUse': stats['used'] / stats['allowed'] if stats['allowed'] else None})
+                            'raidLoot': view['raidLoot'], 'averageDestruction': stats['destruction'] / stats['destructionAttacks'] if stats['destructionAttacks'] else None,
+                            'destructionAttacks': stats['destructionAttacks'], 'attackUse': stats['used'] / stats['allowed'] if stats['allowed'] else None})
+    from upgrade_progress import compact_series
+    for player in members.values():
+        for field in ('capitalSeries', 'donationSeries', 'leagueSeries', 'armySeries'):
+            player[field] = compact_series(player[field])[-730:]
     return {'version': 1, 'updatedAt': at, 'clan': {'tag': state['clanTag'], 'name': state.get('clanName') or 'War Haven', 'level': clan.get('clanLevel'), 'badgeUrl': tracker.clan_badge_url(clan)},
             'members': members, 'comparisons': comparisons}
 

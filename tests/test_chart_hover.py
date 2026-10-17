@@ -55,18 +55,18 @@ console.log('Point/host leave, mouse click, global pointer movement, scrolling, 
 
  def test_all_chart_detail_rows_clear_and_have_no_automatic_selected_value(self):
   source=constant('EXTRA_JS')
-  self.assertIn("()=>{$('chart-inspect').textContent='';}",source)
-  self.assertIn("()=>{$('player-chart-inspect').textContent='';}",source)
-  self.assertIn("show,()=>{if(inspect)inspect.textContent='';}",source)
-  self.assertFalse(any('<title>' in line for line in source.splitlines() if 'data-growth-point=' in line or 'data-contribution-point=' in line),'Point markup must use only the custom tooltip')
+  common=(ROOT/'shared/dashboard-ui.js').read_text()
+  self.assertIn("addEventListener('pointerleave'",common)
+  self.assertIn("addEventListener('blur',hide)",common)
+  self.assertIn("if(e.key==='Escape')hide()",common)
+  self.assertIn("target().textContent=''",common)
+  self.assertIn('WarHavenUI.chart',source)
   self.assertNotIn('inspect(trendPoints.findLastIndex',source)
-  self.assertNotIn('if(known.length)inspect',source)
-  self.assertNotIn('show(entry(visible.map',source)
 
  def test_ohio_and_utah_use_independent_local_clock_times(self):
   source=constant('HTML_TEMPLATE')
   date_fn=next(line for line in source.splitlines() if line.startswith('function date('))
-  program="const WarTracker={time:Date.parse},preferences={clock24:false};"+date_fn+";process.stdout.write(date('2026-10-16T05:20:00Z'));"
+  program=(ROOT/'shared/dashboard-ui.js').read_text()+"\nconst WarTracker={time:Date.parse},preferences={clock24:false};"+date_fn+";process.stdout.write(date('2026-10-16T05:20:00Z'));"
   outputs={}
   for zone in ('America/Denver','America/New_York'):
    result=subprocess.run(['node','-e',program],env={**os.environ,'TZ':zone},capture_output=True,text=True,check=True)
