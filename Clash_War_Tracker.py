@@ -1476,10 +1476,10 @@ def publish_dashboard(config, protected_file, wait_seconds=60, state=None):
                 if build.get('status') == 'built':
                     return {'url': url, 'published': True, 'commit': sha}
                 if build.get('status') == 'errored':
-                    raise PublishError(0, 'GitHub Pages could not build this update. Local history is safe; check the repository Pages build.')
+                    return {'url':url,'published':False,'commit':sha,'publicationError':'GitHub Pages reported a build error; the saved publication will be checked independently.'}
         except PublishError as error:
             if error.status != 404:
-                raise
+                return {'url':url,'published':False,'commit':sha,'publicationError':'Pages confirmation is unavailable; the committed dashboard and history were retained.'}
         time.sleep(min(3, max(0, deadline - time.monotonic())))
     return {'url': url, 'published': False, 'commit': sha}
 

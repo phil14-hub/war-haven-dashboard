@@ -102,6 +102,7 @@ def collect(env, tracker, config, route, state, *, post_war, request):
             import member_exports
             member_exports.publish(candidate, dashboard, request.client, config['password'], tracker)
             result['components']={'github':bool(result.get('published')),'portal':True}
+            result['partial']=not bool(result.get('published'))
         except Exception:
             result['partial']=True
             result['components']={'github':bool(result.get('published')),'portal':False}

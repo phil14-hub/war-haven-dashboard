@@ -71,3 +71,22 @@ const data={clanTag:'#P0Y',policyStart:'2026-10-01',lastSuccessfulSync:'2026-10-
   with patch.object(shared_actions,'ENABLED',False),patch.object(member_exports,'publish',side_effect=RuntimeError('portal outage')),contextlib.redirect_stdout(io.StringIO()):
    result=github_collector.collect(helper.ENV,fake,{'password':'fixture password'},'official',fixture(),post_war=False,request=request)
   self.assertTrue(result['partial']);self.assertTrue(result['components']['github']);self.assertFalse(result['components']['portal']);self.assertTrue(published)
+
+ def test_pages_status_failure_retains_the_successfully_committed_revision(self):
+  from unittest.mock import MagicMock
+  def api(config,method,path,*args):
+   if path.endswith('/pages/builds/latest'):raise tracker.PublishError(403)
+   if path.endswith('/pages'):return {'html_url':'https://warhavenclan.com/','source':{'branch':'main','path':'/'}}
+   return {'default_branch':'main'}
+  with patch.object(tracker,'github_request',side_effect=api),patch.object(tracker,'publish_history_commit',return_value='a'*40),contextlib.redirect_stdout(io.StringIO()):
+   result=tracker.publish_dashboard({'repository':'fixture/repo'},MagicMock(),state={},wait_seconds=1)
+  self.assertFalse(result['published']);self.assertEqual(result['commit'],'a'*40);self.assertIn('confirmation',result['publicationError'])
+
+ def test_source_only_pages_build_can_confirm_the_identical_publication(self):
+  import github_sync_portal
+  def api(config,method,path):
+   if '/actions/runs?' in path:return {'workflow_runs':[{'name':'pages build and deployment','head_sha':'later-source-commit'}]}
+   return {'sha':'page-blob'}
+  fake=SimpleNamespace(github_request=api,github_history_record=lambda *a,**kw:{'sha':'archive-blob'},PublishError=tracker.PublishError)
+  self.assertTrue(github_sync_portal.pages_contains_publication({'repository':'fixture/repo'},fake,'page-blob','archive-blob'))
+  self.assertFalse(github_sync_portal.pages_contains_publication({'repository':'fixture/repo'},fake,'other-page','archive-blob'))

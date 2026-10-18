@@ -57,10 +57,12 @@ The portal release uses additive migrations 0005–0006. It requires the Site-ma
 
 ## Verification and practical limits
 
-Automated checks cover 64 Python tests, all portal JavaScript test files, the populated leadership fixture across all navigation surfaces, security/MFA replay/concurrency, publication failures and worker packaging. Tests use synthetic accounts, in-memory databases, stub mail and isolated DOM environments. No real clan records, accounts, notices or emails were changed for testing.
+Automated checks cover 66 Python tests, all portal JavaScript test files, the populated leadership fixture across all navigation surfaces, security/MFA replay/concurrency, publication failures and worker packaging. Tests use synthetic accounts, in-memory databases, stub mail and isolated DOM environments. No real clan records, accounts, notices or emails were changed for testing.
 
 Real desktop/phone browser visual QA, actual verification/recovery email delivery, genuine XP screenshot recognition, and mobile load timing were unavailable in this environment. The real current crest was rendered and pixel-compared; other badge geometries remain to be checked if the clan changes its badge. OCR continues to use the pinned reader CDN with manual entry as fallback; self-hosting was optional in the audit and is not required by this release.
 
 A new leader code version requires reloading after shared saving finishes. Member and leader data synchronization is verified through the independent workflow; retained encrypted history is never replaced with a fixture or an empty archive.
 
 `rebuild-dashboard.yml` republishes current code over the verified encrypted archive on source changes. It does not depend on a fresh Clash API lookup and does not erase or replace saved history.
+
+Publication verification also handles unavailable Pages status checks after a successful commit and accepts a later source-only Pages build containing the identical encrypted page/archive blobs.

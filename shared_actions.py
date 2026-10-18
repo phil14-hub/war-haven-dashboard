@@ -184,7 +184,7 @@ class UpdateRequest:
             try:
                 self.client.request('/v1/refresh/finish', {'kind': self.kind, 'id': self.request['id'],
                                     'lease': self.lease, 'ok': bool(result and result.get('published')),
-                                    'commit': result.get('commit') if result else None, 'partial': bool(result and result.get('partial')), 'components': result.get('components') if result else None})
+                                    'commit': result.get('commit') if result else None, 'partial': bool(result and (result.get('partial') or result.get('commit') and not result.get('published'))), 'components': result.get('components') if result else None})
                 print('Independent ' + self.kind + ' update status synchronized.')
             except SharedActionsError:
                 print('::warning::Update status could not be synchronized. Check the latest dashboard before retrying.')

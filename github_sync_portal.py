@@ -8,6 +8,25 @@ import member_exports
 import shared_actions
 
 
+def pages_contains_publication(config, tracker, page_sha, history_sha):
+    """A later source-only commit can deploy the same encrypted publication."""
+    try:
+        runs=tracker.github_request(config,'GET','/repos/'+config['repository']+'/actions/runs?status=success&per_page=50')
+        for run in runs.get('workflow_runs',[]):
+            if run.get('name')!='pages build and deployment' or not run.get('head_sha'):
+                continue
+            ref=run['head_sha']
+            page=tracker.github_request(config,'GET','/repos/'+config['repository']+'/contents/index.html?ref='+ref)
+            if page.get('sha')!=page_sha:
+                continue
+            history=tracker.github_history_record(config,ref=ref)
+            if history and history.get('sha')==history_sha:
+                return True
+    except tracker.PublishError:
+        return False
+    return False
+
+
 def run(env=None, tracker=None):
     env = os.environ if env is None else env
     repository = env.get('GITHUB_REPOSITORY')
@@ -24,7 +43,10 @@ def run(env=None, tracker=None):
     record = tracker.github_request(config, 'GET', '/repos/'+repository+'/contents/index.html?ref='+head)
     if not record.get('content'):
         record = tracker.github_request(config, 'GET', '/repos/'+repository+'/git/blobs/'+record['sha'])
+    page_sha=record['sha']
     document = base64.b64decode(record['content'], validate=False).decode('utf-8')
+    read_config={**config,'token':env.get('GITHUB_TOKEN') or config['token']}
+    github_published=pages_contains_publication(read_config,tracker,page_sha,archive['sha'])
     with tempfile.TemporaryDirectory(prefix='war-haven-portal-sync-') as folder:
         path = Path(folder)/'index.html'
         path.write_text(document, encoding='utf-8')
@@ -32,7 +54,7 @@ def run(env=None, tracker=None):
         result = member_exports.publish(state, path, client, config['password'], tracker)
         for kind in ('clan','recruitment'):
             try:
-                client.request('/v1/refresh/reconcile', {'kind': kind, 'publication': result['publication']})
+                client.request('/v1/refresh/reconcile', {'kind': kind, 'publication': result['publication'], 'githubPublished':github_published})
             except shared_actions.SharedActionsError:
                 print('Portal data is current; an older progress entry will be reconciled on the next retry.')
     print('Member and leadership portal synchronized from the same saved revision.')
