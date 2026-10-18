@@ -32,7 +32,7 @@ Clan and recruitment collection run independently. **Update clan dashboard** col
 
 **Management → Recruiter** is part of the dashboard, with native cards, search and filters, candidate history and clan turnover. Cards reveal gently as they scroll into view and respect reduced-motion settings. Town Hall 1–18 images appear beside player names across roster, lineup, contribution and recruiting cards. **Management → How to Use** explains the dashboard for first-time leaders.
 
-The encrypted shared-saving and token-free update service uses dashboard passphrase access to authorize encrypted shared notes/plans and separate clan/recruitment requests. The supporting API is reachable from the dashboard and requires current dashboard-passphrase proof for every data and update operation. Each request has an estimated duration, a progress bar and confirmed publication at 100%. Provider credentials remain in GitHub Actions. Password changes still require owner authorization. See [shared actions](SHARED_ACTIONS.md).
+The encrypted shared-saving and token-free update service uses dashboard passphrase access to authorize encrypted shared notes/plans and separate clan/recruitment requests. The supporting API is reachable from the dashboard and accepts individual leadership sessions or dashboard proof for reading/requesting, and requires a signed main-branch GitHub Actions token for ingesting or claiming/completing updates. Each request has an estimated duration, a progress bar and confirmed publication at 100%. Provider credentials remain in GitHub Actions. Password changes still require owner authorization. See [shared actions](SHARED_ACTIONS.md).
 
 After either update request is accepted, leaders can close the dialog, leave the page or exit the browser; collection and publication continue in the cloud. The Home refresh icon spins while clan collection is queued or running, independently of recruitment. Open dashboards load newly published data automatically without a page reload or another unlock. The current page, filters, open player report, scroll position and pending notes/plans are retained. Hidden tabs check when they become visible again. A failed download or authentication check keeps the current dashboard available and retries later. A changed passphrase requires a new unlock.
 
@@ -52,7 +52,7 @@ finish before searching for the next regular war. See
 
 Run the script when you want fresh data. It saves history on GitHub and updates the same website URL. Capture regular-war results after a war ends and before starting the next war. The website itself displays the last published snapshot.
 
-All authorized viewers can unlock the site with the shared passphrase. Viewing does not grant repository write access. Notes and lineup drafts save automatically to encrypted shared records across leaders. Other edit types still need **Management → Save changes / backup** and import to reach other devices. GitHub Pages serves the encrypted snapshots and the separate service handles shared actions.
+All authorized viewers can unlock the site with the shared passphrase. Viewing does not grant repository write access. Leadership edits save automatically to encrypted shared records across leaders. Attendance exceptions, war corrections, XP checkpoints, village imports and reviewed flags also share automatically. Backups retain the complete captured history. GitHub Pages serves the encrypted snapshots and the separate service handles shared actions.
 
 Useful arguments:
 
@@ -78,3 +78,7 @@ The bundled AES fallback is pyaes 1.6.1, copyright 2014 Richard Moore, MIT licen
 Current checks: 40 Python tests, including actual generated JavaScript syntax, independent collector behavior, viewer-local times, hover dismissal, archive continuity and browser/cloud encryption interoperability. JavaScript checks cover concurrent shared edits, retained drafts, idempotent retry, progress completion, password proofs, CORS, separate update queues and automatic data-only updates that preserve the unlocked view. Browser visual QA was unavailable in this environment.
 
 Town Hall images are bundled from [ClashKingAssets](https://github.com/ClashKingInc/ClashKingAssets/tree/main/assets/buildings/home-village/town_hall), so the dashboard does not fetch them from a third-party host at view time. Clash of Clans assets belong to Supercell.
+
+## Audit corrections and checks
+
+See [AUDIT_FIXES.md](AUDIT_FIXES.md) for the October 17 corrections and verification limits. Run `python -m pip install requests==2.34.2`, `npm ci --ignore-scripts`, and `python -m unittest discover -s tests -v`. Generate the synthetic UI fixture with `python tests/create_leadership_fixture.py`, then run `WAR_HAVEN_DASHBOARD_FIXTURE=tests/fixtures/leadership.html npm run test:ui`. The regression workflow requires the rendered fixture test for source changes. It is isolated DOM testing; real phone/browser and genuine screenshot QA remain separate.

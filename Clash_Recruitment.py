@@ -97,7 +97,7 @@ from urllib.parse import quote
 
 import requests
 
-VERSION = "4.5"
+VERSION = "4.6"
 API_ROOT = "https://api.clashofclans.com/v1"
 
 # ---------------------------------------------------------------------------
@@ -400,11 +400,23 @@ def freshness_label(detected_at, now=None):
 
 def json_load(path, default):
     try:
+        manifest = STATE_DIR / 'generation.json'
+        if manifest.exists() and Path(path).parent == STATE_DIR and Path(path).name not in ('generation.json', 'scan_checkpoint.json'):
+            generation = json.loads(manifest.read_text(encoding='utf-8'))
+            if Path(path).name in generation['files']:
+                directory = Path(generation['directory'])
+                candidate = directory if directory.is_absolute() else STATE_DIR / directory
+                if not candidate.resolve().is_relative_to((STATE_DIR/'generations').resolve()):
+                    raise ValueError('Invalid recruiter generation path')
+                path = candidate / Path(path).name
+                if not path.is_file():
+                    raise ValueError('The completed recruiter generation is incomplete; restore its previous generation')
         if Path(path).exists():
             with Path(path).open("r", encoding="utf-8") as f:
                 return json.load(f)
     except Exception as exc:
         log_error(f"Could not read {Path(path).name}: {exc}")
+        raise ValueError(f"Saved recruiter file {Path(path).name} is unreadable. Restore the prior generation; existing files were not overwritten.") from exc
     return default
 
 
@@ -414,7 +426,23 @@ def json_save_atomic(path, data):
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+    if path.exists():
+        import shutil
+        shutil.copy2(path, path.with_suffix(path.suffix + '.previous'))
     tmp.replace(path)
+
+
+def save_generation(values):
+    # One manifest is the commit point. A crash before it leaves the previous generation valid.
+    import uuid
+    folder = STATE_DIR / 'generations' / uuid.uuid4().hex
+    folder.mkdir(parents=True)
+    for path, value in values:
+        json_save_atomic(folder / Path(path).name, value)
+    json_save_atomic(STATE_DIR / 'generation.json', {'version': 1, 'directory': folder.relative_to(STATE_DIR).as_posix(), 'files': [Path(p).name for p, _ in values]})
+    # Legacy mirrors remain available to older Pyto copies and cloud packaging.
+    for path, value in values:
+        json_save_atomic(path, value)
 
 
 def log_error(message, context=None):
@@ -1659,10 +1687,9 @@ def process_departures(api, departures, leaver_store, filters, cooldown_days, ru
         if not isinstance(player, dict):
             err = fetch_errors.get(tag, "no player profile returned")
             log_error(f"Could not verify departure {tag}: {err}", {"playerTag": tag})
-            rec = leaver_store["players"].get(tag)
-            if rec:
-                set_lifecycle(rec, LIFECYCLE_VERIFY_ERROR, reason="departure_live_check_failed")
-                rec["lastVerifiedAt"] = iso_now()
+            rec = leaver_store["players"].setdefault(tag, {"tag": tag, "events": [], "departureCount": 1, "firstDetectedAt": d.get("detectedAt"), "lastDepartureDetectedAt": d.get("detectedAt"), "detectedAt": d.get("detectedAt"), "previousRosterAt": d.get("previousRosterAt"), "observationWindowSeconds": d.get("observationWindowSeconds"), "sourceClanTag": d.get("sourceClanTag"), "sourceClanName": d.get("sourceClanName"), "lastDetectedRunId": run_id})
+            set_lifecycle(rec, LIFECYCLE_VERIFY_ERROR, reason="departure_live_check_failed")
+            rec["lastVerificationAttemptAt"] = iso_now()
             continue
 
         now = iso_now()
@@ -1782,7 +1809,7 @@ def reverify_active_candidates(api, leaver_store, filters, active_days, profile_
             err = fetch_errors.get(tag)
             if err:
                 set_lifecycle(rec, LIFECYCLE_VERIFY_ERROR, reason="reverify_failed")
-                rec["lastVerifiedAt"] = iso_now()
+                rec["lastVerificationAttemptAt"] = iso_now()
                 log_error(f"Could not reverify {tag}: {err}", {"playerTag": tag})
             continue
 
@@ -2088,6 +2115,12 @@ def clean_row(row):
     return {k: v for k, v in row.items() if not k.startswith("_")}
 
 
+def csv_safe(value):
+    if isinstance(value, str) and value.lstrip(' \t\r\n').startswith(('=', '+', '-', '@')):
+        return "'" + value
+    return value
+
+
 def save_csv(rows, path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -2105,7 +2138,7 @@ def save_csv(rows, path):
     with path.open("w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows({k: csv_safe(v) for k,v in row.items()} for row in rows)
 
 
 def save_history_csv(leaver_store, path):
@@ -2125,7 +2158,7 @@ def save_turnover_csv(rows, path):
     with path.open("w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows({k: csv_safe(v) for k,v in row.items()} for row in rows)
 
 
 # ---------------------------------------------------------------------------
@@ -2794,11 +2827,7 @@ def main(argv=None):
     }
 
     # Commit all state atomically, then remove the now-completed checkpoint.
-    json_save_atomic(ROSTERS_FILE, merged_snapshot)
-    json_save_atomic(LEAVERS_FILE, leaver_store)
-    json_save_atomic(CLAN_METRICS_FILE, metrics_store)
-    json_save_atomic(TRACKED_CLANS_FILE, tracked_state)
-    json_save_atomic(RUN_STATS_FILE, run_stats)
+    save_generation([(ROSTERS_FILE, merged_snapshot), (LEAVERS_FILE, leaver_store), (CLAN_METRICS_FILE, metrics_store), (TRACKED_CLANS_FILE, tracked_state), (RUN_STATS_FILE, run_stats)])
 
     save_csv(active_rows, args.output)
     save_history_csv(leaver_store, args.history_output)
@@ -2863,3 +2892,4 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+

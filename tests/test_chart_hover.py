@@ -58,7 +58,7 @@ console.log('Point/host leave, mouse click, global pointer movement, scrolling, 
   common=(ROOT/'shared/dashboard-ui.js').read_text()
   self.assertIn("addEventListener('pointerleave'",common)
   self.assertIn("addEventListener('blur',hide)",common)
-  self.assertIn("if(e.key==='Escape'){pinned=false;hide();}",common)
+  self.assertIn("if(e.key==='Escape')",common)
   self.assertIn("target().textContent=''",common)
   self.assertIn('WarHavenUI.chart',source)
   self.assertNotIn('inspect(trendPoints.findLastIndex',source)

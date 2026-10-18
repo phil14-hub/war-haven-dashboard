@@ -101,8 +101,11 @@ def collect(env, tracker, config, route, state, *, post_war, request):
         try:
             import member_exports
             member_exports.publish(candidate, dashboard, request.client, config['password'], tracker)
+            result['components']={'github':bool(result.get('published')),'portal':True}
         except Exception:
-            print('::warning::Member dashboards retained their previous snapshot; member synchronization will retry on the next clan update.')
+            result['partial']=True
+            result['components']={'github':bool(result.get('published')),'portal':False}
+            print('::warning::Member dashboards retained their previous snapshot; the independent portal sync workflow will retry.')
     print('Encrypted dashboard and history updated.' if result['published']
           else 'Encrypted update uploaded; GitHub Pages is still deploying.')
     request.finish(result)

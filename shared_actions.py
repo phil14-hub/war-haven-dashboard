@@ -4,6 +4,9 @@ from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
+import os
+import time
+from urllib.parse import urlencode
 import secrets
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -22,6 +25,8 @@ class Client:
     def __init__(self, password):
         self.password = password
         self.proof = None
+        self.machine_token = None
+        self.machine_until = 0
 
     def request(self, path, payload=None, retry=True):
         try:
@@ -34,9 +39,21 @@ class Client:
                 raw = hashlib.pbkdf2_hmac('sha256', self.password.encode(), salt, rounds, dklen=64)
                 self.proof = base64.b64encode(raw[32:]).decode()
             headers = {'Content-Type': 'application/json',
-                       'User-Agent': 'WarHavenDashboard/1.19 (+https://github.com/phil14-hub/war-haven-dashboard)'}
+                       'User-Agent': 'WarHavenDashboard/1.22 (+https://github.com/phil14-hub/war-haven-dashboard)'}
             if self.proof:
                 headers['X-War-Haven-Proof'] = self.proof
+            if path in ('/members/api/ingest', '/v1/refresh/claim', '/v1/refresh/progress', '/v1/refresh/finish', '/v1/refresh/reconcile'):
+                if not self.machine_token or time.time() > self.machine_until:
+                    endpoint = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_URL', '')
+                    bearer = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_TOKEN', '')
+                    if not endpoint.startswith('https://') or not bearer:
+                        raise SharedActionsError('Collector publishing requires the configured main-branch GitHub Actions workflow. Local publications synchronize through sync-portal.yml.')
+                    separator = '&' if '?' in endpoint else '?'
+                    oidc = Request(endpoint + separator + urlencode({'audience': 'war-haven-collector'}), headers={'Authorization': 'Bearer ' + bearer})
+                    with urlopen(oidc, timeout=15) as response:
+                        self.machine_token = json.load(response)['value']
+                    self.machine_until = time.time() + 240
+                headers['Authorization'] = 'Bearer ' + self.machine_token
             request = Request(BACKEND_URL + path,
                               data=json.dumps(payload or {}).encode(),
                               headers=headers, method='POST')
@@ -58,7 +75,7 @@ def decrypt_record(envelope, key, tracker):
         raw = base64.b64decode(key, validate=True)
         iv, ciphertext, tag = (base64.b64decode(envelope[n], validate=True)
                                for n in ('iv', 'ciphertext', 'tag'))
-        if envelope.get('version') != 1 or len(raw) != 64 or len(iv) != 16 or len(tag) != 32 or not ciphertext or len(ciphertext) % 16 or len(ciphertext) > 24000:
+        if envelope.get('version') != 1 or len(raw) != 64 or len(iv) != 16 or len(tag) != 32 or not ciphertext or len(ciphertext) % 16 or len(ciphertext) > 64000:
             raise ValueError()
         expected = hmac.new(raw[32:], CONTEXT + iv + ciphertext, hashlib.sha256).digest()
         if not hmac.compare_digest(expected, tag):
@@ -68,7 +85,7 @@ def decrypt_record(envelope, key, tracker):
         if not 1 <= count <= 16 or padded[-count:] != bytes([count]) * count:
             raise ValueError()
         value = json.loads(padded[:-count])
-        if not isinstance(value, dict) or value.get('category') not in ('notes', 'lineupPlans'):
+        if not isinstance(value, dict) or value.get('category') not in ('notes', 'lineupPlans', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions'):
             raise ValueError()
         return value
     except (ValueError, KeyError, TypeError, IndexError):
@@ -91,7 +108,7 @@ def pull(state, client, tracker):
     if not prepare(state):
         return
     result = client.request('/v1/records')
-    edits = tracker.empty_edits() if hasattr(tracker, 'empty_edits') else {'notes': {}, 'lineupPlans': {}}
+    edits = {k: {} for k in ('notes', 'lineupPlans', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions')}
     for record in result.get('records', []):
         clear = decrypt_record(record['envelope'], state['sharedActions']['encryptionKey'], tracker)
         category, key, value = clear['category'], clear.get('key'), clear.get('value')
@@ -100,14 +117,23 @@ def pull(state, client, tracker):
         expected_id = hmac.new(base64.b64decode(state['sharedActions']['encryptionKey'])[32:], (category + ':' + key).encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(record['id'], expected_id):
             raise SharedActionsError('A shared record failed identity verification.')
+        if value.get('deleted') is True:
+            edits[category][key] = {'deleted': True, 'updatedAt': record['updatedAt']}
+            continue
+        if category == 'exceptions' and (not isinstance(value.get('value'), bool) or len(key) > 200):
+            raise SharedActionsError('Invalid attendance exception.')
         if category == 'notes' and (tracker.normalize_tag(key) != key or not isinstance(value.get('text'), str) or len(value['text']) > 6000):
             raise SharedActionsError('Invalid shared note.')
         if category == 'lineupPlans':
             tracker.validate_lineup_edits({'lineupPlans': {key: value}})
+        if category == 'manualWars':
+            tracker.apply_snapshot(tracker.new_state(state['clanTag']), {'clanTag': state['clanTag'], 'edits': {'manualWars': {key: value}}})
+        if category in ('xpCheckpoints', 'villageProgress', 'flagResolutions') and (len(key)>200 or len(json.dumps(value))>64000):
+            raise SharedActionsError('Invalid shared edit.')
         # The service timestamp resolves updates independently of device clocks.
         edits[category][key] = {**value, 'updatedAt': record['updatedAt']}
     merged = tracker.merge_edits(state.get('edits'), {})
-    for category in ('notes', 'lineupPlans'):
+    for category in ('notes', 'lineupPlans', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions'):
         merged[category].update(edits[category])
     state['edits'] = merged
 
@@ -158,7 +184,7 @@ class UpdateRequest:
             try:
                 self.client.request('/v1/refresh/finish', {'kind': self.kind, 'id': self.request['id'],
                                     'lease': self.lease, 'ok': bool(result and result.get('published')),
-                                    'commit': result.get('commit') if result else None})
+                                    'commit': result.get('commit') if result else None, 'partial': bool(result and result.get('partial')), 'components': result.get('components') if result else None})
                 print('Independent ' + self.kind + ' update status synchronized.')
             except SharedActionsError:
                 print('::warning::Update status could not be synchronized. Check the latest dashboard before retrying.')

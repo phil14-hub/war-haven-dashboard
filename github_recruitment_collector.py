@@ -43,8 +43,11 @@ def collect(env, tracker, config, route, state, request):
         try:
             import member_exports
             member_exports.publish(candidate, dashboard, request.client, config['password'], tracker)
+            result['components']={'github':bool(result.get('published')),'portal':True}
         except Exception:
-            print('::warning::Member dashboards retained their previous snapshot; synchronization will retry on the next update.')
+            result['partial']=True
+            result['components']={'github':bool(result.get('published')),'portal':False}
+            print('::warning::Member dashboards retained their previous snapshot; the independent portal sync workflow will retry.')
     print('Recruitment updated independently. Clan collection was not run.')
     request.finish(result)
     return result

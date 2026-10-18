@@ -1,6 +1,6 @@
 # Individual War Haven dashboards
 
-The public website offers Leader / Co-Leader Sign In and Member Sign In. Personal accounts use the member portal at https://war-haven-actions.readydrake18.chatgpt.site/members/. Existing leadership passphrase access remains available during account setup.
+The public website offers Leader / Co-Leader Sign In and Member Sign In. Personal accounts use the member portal at https://portal.warhavenclan.com/members/. Existing leadership passphrase access remains available during account setup.
 
 ## Registration and approval
 
@@ -47,3 +47,13 @@ Collection logs record member-projection size, complete uncompressed history siz
 ## Verification
 
 Python tests cover privacy filtering, complete roster validation, contribution baselines and final-war calculations. Account tests use real SQLite migrations and cover pending access restrictions, verification and token replay, owner-only role assignment, secure cookies, immediate approval access, confirmed departure/rejoin handling, goals, announcements, recovery and unavailable-email gating. Browser visual QA was unavailable in the build environment; live email delivery requires owner email activation.
+
+## October 17 audit corrections
+
+Use https://portal.warhavenclan.com/members/?portal=member or `?portal=leader` for the corresponding sign-in form. The public portal has private, individually scoped account data. Website roles and in-game roles are distinct; the owner can acknowledge differences in the audited account list. A primary village departure does not block an approved in-clan secondary village. Accounts can change their primary approved village, unlink additional villages, or request a declined/unlinked village again. Leaders can revoke additional village links without deleting clan statistics.
+
+New and reset passwords require at least 15 characters (bcrypt's 72 UTF-8 byte limit still applies) and a maintained breached-password check using a padded five-character hash-prefix request. Existing passwords continue to work. Password-screening outages preserve accounts and reset links. Settings & accounts offers optional authenticator sign-in, encrypted server-side TOTP secrets and ten single-use recovery codes. Password resets retain enabled MFA. Keep recovery codes somewhere private; they are shown once. The Site-managed MFA key must be retained across deployments.
+
+Ordinary Sign out affects this device; Sign out all devices is a separate account control. Recovery/access changes invalidate pending email-change links. If initial verification email delivery fails, the created account is reported explicitly with a sign-in/resend path. No real email was sent during automated regression testing.
+
+Announcement authors and edit times are visible. The author or owner can preview/edit/archive announcements; edits become unread and changes appear in Approval History. Routine collector synchronization creates no announcements.

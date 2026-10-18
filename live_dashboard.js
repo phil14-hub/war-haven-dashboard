@@ -1,7 +1,7 @@
 const DashboardLiveUpdates=(()=>{
  let etag=null,checking=null,latestToken=window.warHavenEnvelope?.tag||null;
  const pendingEdits=incoming=>typeof SharedDashboardSync!=='undefined'?SharedDashboardSync.mergeSnapshotEdits(incoming):WarTracker.mergeEdits(incoming,edits);
- function notice(message){const banner=$('publication-update');if(!banner)return;banner.hidden=!message;banner.dataset.tone='warning';if(message)$('publication-message').textContent=message;}
+ let codeUpdate=false;function notice(message){if(!message&&codeUpdate)return;if(message?.startsWith('A new dashboard version'))codeUpdate=true;const banner=$('publication-update');if(!banner)return;banner.hidden=!message;banner.dataset.tone='warning';if(message)$('publication-message').textContent=message;}
  function captureView(){
   const controls=[];
   document.querySelectorAll('input[id],select[id],textarea[id]').forEach(el=>{
@@ -44,6 +44,8 @@ const DashboardLiveUpdates=(()=>{
   }catch(error){data=prior.data;edits=prior.edits;recruiterReport=prior.report;RecruitmentDashboard.invalidate();try{render();if(view.page==='recruiter')openRecruiter();if(view.player)openPlayer(view.player);restoreView(view);}catch{}throw error;}
  }
  async function readPublication(){
+  if(location.pathname.startsWith('/members/')){const response=await fetch('/members/api/leadership-data',{cache:'no-store',credentials:'same-origin',headers:etag?{'If-None-Match':etag}:{},signal:AbortSignal.timeout(20000)});if(response.status===304)return false;if(!response.ok)throw Error(response.status===401?'Sign in again to load new leadership data. Your encrypted drafts are retained.':'Could not load new clan data. Retrying automatically.');const value=await response.json();if(value.tag===latestToken){etag=response.headers.get('etag');return false;}if(value.data?.sourceBuildVersion&&data.sourceBuildVersion&&value.data.sourceBuildVersion!==data.sourceBuildVersion){notice('A new dashboard version is ready. Finish saving shared changes, then reload to open it. Your encrypted drafts are retained.');return false;}applySnapshot(value.data,value.report);latestToken=value.tag;etag=response.headers.get('etag');return true;}
+
   const url=new URL(location.href);url.hash='';url.searchParams.set('_snapshot',Date.now());
   const response=await fetch(url.href,{cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(30000)});
   if(response.status===401||response.status===403||response.redirected&&new URL(response.url).pathname!==url.pathname)throw Error('Your sign-in expired. Sign in again to receive updates; your current dashboard remains open.');
@@ -57,7 +59,7 @@ const DashboardLiveUpdates=(()=>{
   const clear=await window.warHavenSession.decrypt(payload),parsed=new DOMParser().parseFromString(clear,'text/html');
   const source=parsed.getElementById('war-data'),report=parsed.getElementById('recruiter-data');
   if(!source)throw Error('The published update is missing its snapshot. Your current dashboard remains open.');
-  applySnapshot(JSON.parse(source.textContent),report?JSON.parse(report.textContent):{});
+  const incoming=JSON.parse(source.textContent);if(incoming.sourceBuildVersion&&data.sourceBuildVersion&&incoming.sourceBuildVersion!==data.sourceBuildVersion){notice('A new dashboard version is ready. Finish saving shared changes, then reload. Your encrypted drafts are retained.');return false;}applySnapshot(incoming,report?JSON.parse(report.textContent):{});
   latestToken=payload.tag;window.warHavenEnvelope=payload;etag=nextEtag||etag;
   return true;
  }
@@ -66,7 +68,7 @@ const DashboardLiveUpdates=(()=>{
   if(!/^https?:$/.test(location.protocol)||document.hidden||!window.warHavenSession?.decrypt)return false;
   checking=(async()=>{
    try{
-    if(!force&&etag){
+    if(!force&&etag&&!location.pathname.startsWith('/members/')){
      const head=await fetch(location.href.split('#')[0],{method:'HEAD',cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(15000)});
      if(!head.ok)throw Error('Could not check the latest snapshot. It will retry automatically.');
      const current=head.headers.get('etag')||head.headers.get('last-modified');

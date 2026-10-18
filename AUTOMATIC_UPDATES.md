@@ -148,3 +148,7 @@ older password cannot be revoked.
 The bundled libsodium.js 0.8.4 encrypts the Actions secret using GitHub's public
 key. Its ISC license is included in the collector and encrypted dashboard. It
 loads locally for a password change; no external script host receives credentials.
+
+## Portal publication retry
+
+`sync-portal.yml` runs after encrypted dashboard/archive pushes, on demand, and twice hourly. It restores the same main-branch revision without another Clash collection and publishes matching member/leader projections. Local/Pyto publications use this path. Collector workflows require `id-token: write` for scoped portal authorization; publishing/API secrets remain in Actions. A successful GitHub publication with a failed portal upload is reported as partial, preserving the prior complete portal snapshot until retry.

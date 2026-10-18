@@ -1,0 +1,33 @@
+name: Synchronize member and leadership portal
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [index.html, data/war_tracker_state.enc.json, github_sync_portal.py, member_exports.py, shared_actions.py, .github/workflows/sync-portal.yml]
+  schedule:
+    - cron: '17,47 * * * *'
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: war-haven-clan-update
+  cancel-in-progress: false
+jobs:
+  synchronize:
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Publish the saved revision without another clan collection
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python github_sync_portal.py

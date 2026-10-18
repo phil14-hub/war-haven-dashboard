@@ -1,3 +1,5 @@
+> Historical implementation record. Current corrections and verification are documented in [AUDIT_FIXES.md](AUDIT_FIXES.md), dated October 17, 2026.
+
 # War Haven: Management > Account Approvals & Player Dashboards
 
 Implementation specification (approved October 16, 2026). This is a product/engineering specification, **not** deployed site code. Implement it in the existing **War Haven shared actions** Site and its associated leadership dashboard without replacing the project.

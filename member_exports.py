@@ -67,7 +67,7 @@ def build_snapshot(state, tracker):
     if isinstance(clan.get('members'), int) and clan['members'] != len(roster):
         raise ValueError('Member roster count does not match the clan snapshot.')
     wars = {v['id']: v for v in state.get('wars', []) if v.get('id')}
-    wars.update((state.get('edits') or {}).get('manualWars', {}))
+    wars.update({key:value for key,value in (state.get('edits') or {}).get('manualWars', {}).items() if not value.get('deleted')})
     members, comparisons = {}, []
     for player in roster:
         tag = tracker.normalize_tag(player.get('tag'))
@@ -100,7 +100,11 @@ def build_snapshot(state, tracker):
                 stats['allowed'] += allowed
             seen_attacks = set()
             for index, attack in enumerate(participant.get('attacks', [])):
-                attack_id = attack.get('order', index)
+                if not isinstance(attack, dict):
+                    continue
+                attack_id = attack.get('order') if attack.get('order') is not None else 'index:'+str(index)
+                if not isinstance(attack_id, (str,int)):
+                    continue
                 if attack_id in seen_attacks:
                     continue
                 seen_attacks.add(attack_id)
@@ -124,7 +128,12 @@ def build_snapshot(state, tracker):
             entry = next((p for p in sample.get('members', []) if tracker.normalize_tag(p.get('tag')) == tag), None)
             if entry and entry.get('league', {}).get('points') is not None:
                 league_series.append({'at': sample['at'], 'value': entry['league']['points'], 'detail': entry['league'].get('name', '')})
-        army = tracker.army_progress(profile)
+        roster_th = player.get('townHallLevel')
+        profile_at = profile.get('profileCheckedAt')
+        profile_matches = bool(profile and profile.get('townHallLevel') == roster_th and profile_at)
+        army = tracker.army_progress(profile) if profile_matches else {}
+        profile_status = {'capturedAt': profile_at, 'townHallMatches': bool(profile and profile.get('townHallLevel') == roster_th), 'available': profile_matches,
+                          'message': None if profile_matches else 'Army progress is waiting for a successful player profile matching the current Town Hall.'}
         army_series = [{'at': p['at'], 'value': p['completionPercent'], 'townHall': p.get('townHall'), 'detail': 'TH ' + str(p.get('townHall'))} for p in state.get('memberProgressHistory', {}).get(tag, []) if p.get('method') == 'th-work-v2' and p.get('at') and p.get('completionPercent') is not None]
         badges = []
         for condition, label in [(stats['used'] >= 10, '10 confirmed war attacks'), (stats['stars'] >= 30, '30 recorded war stars'),
@@ -140,12 +149,12 @@ def build_snapshot(state, tracker):
                 'raidLoot': sum(completed_loot) if completed_loot else None, 'raids': raids, 'wars': own_wars,
                 'warStats': stats, 'leagueSeries': league_series, 'armySeries': army_series, 'armyPercent': army.get('completionPercent'), 'army': army,
                 'heroes': [{'name': h['name'], 'level': h['level'], 'maximum': h['maximum']} for h in army.get('groups', {}).get('heroes', {}).get('items', [])],
-                'achievements': badges}
+                'achievements': badges, 'profileStatus': profile_status, 'season': str(at)[:7]}
         members[tag] = view
         comparisons.append({'tag': tag, 'name': view['name'], 'townHallLevel': view['townHallLevel'], 'leaguePoints': league.get('points'),
                             'seasonDonations': view['seasonDonations'], 'capitalGold': capital, 'warStars': stats['stars'] if stats['attacks'] else None,
                             'raidLoot': view['raidLoot'], 'averageDestruction': stats['destruction'] / stats['destructionAttacks'] if stats['destructionAttacks'] else None,
-                            'destructionAttacks': stats['destructionAttacks'], 'attackUse': stats['used'] / stats['allowed'] if stats['allowed'] else None})
+                            'windowStart': next((w['endTime'] for w in own_wars if w['final']), None), 'windowEnd': next((w['endTime'] for w in reversed(own_wars) if w['final']), None), 'destructionAttacks': stats['destructionAttacks'], 'attackUse': stats['used'] / stats['allowed'] if stats['allowed'] else None})
     from upgrade_progress import compact_series
     for player in members.values():
         for field in ('capitalSeries', 'donationSeries', 'leagueSeries', 'armySeries'):
@@ -160,7 +169,7 @@ def fetch_clan_badge(state, tracker):
     if not url:
         return None
     try:
-        request=Request(url,headers={'User-Agent':'WarHavenDashboard/1.19 (+https://github.com/phil14-hub/war-haven-dashboard)'})
+        request=Request(url,headers={'User-Agent':'WarHavenDashboard/1.22 (+https://github.com/phil14-hub/war-haven-dashboard)'})
         with urlopen(request,timeout=15) as response:
             raw=response.read(262145)
             if response.geturl()!=url or len(raw)>262144 or not raw.startswith(b'\x89PNG\r\n\x1a\n'):

@@ -62,3 +62,7 @@ against overlapping publications. Source is `Clash_Recruitment.py` (version 4.5)
 The recruitment view now renders native dashboard cards, filters, verification details and a collapsible clan-turnover table. It shares the dashboard’s scrolling and navigation. Matching Town Hall images sit beside player names. Scroll reveals respect reduced-motion preferences. New scans include structured display data; older saved HTML reports are read as data without executing their markup or scripts.
 
 Recruitment collection runs independently through `.github/workflows/update-recruitment.yml`, daily around 7:35 AM America/Denver or manually. Clan updates, including the post-war capture, retain the last recruitment report. The recruitment button submits only a recruitment request and shows its own estimate/progress, using dashboard access without a GitHub token.
+
+## Recovery and verification corrections
+
+Detected departures remain pending when the first profile lookup fails, including their observation window. Failed checks update the attempt time; the last successful verification time remains unchanged. Local recruiter files fail closed on unreadable JSON. A completed generation manifest is the commit point for the related state files; the previous generation and `.previous` mirrors support recovery. CSV exports escape spreadsheet formula prefixes, including leading whitespace/control characters.

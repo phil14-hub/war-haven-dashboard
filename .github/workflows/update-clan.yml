@@ -9,6 +9,9 @@ on:
       - 'Clash_War_Tracker.py'
       - 'github_collector.py'
       - 'member_exports.py'
+      - 'shared/**'
+      - 'upgrade_progress.py'
+      - 'upgrade_catalog.json'
       - 'war_end_updates.py'
       - '.github/workflows/update-clan.yml'
   schedule:
@@ -17,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: war-haven-clan-update
@@ -47,6 +51,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install recruiter regression dependency
+        run: python -m pip install --disable-pip-version-check requests==2.34.2
       - name: Check automatic final-war timing
         run: python -m unittest discover -s tests -v
       - name: Refresh and publish encrypted clan data

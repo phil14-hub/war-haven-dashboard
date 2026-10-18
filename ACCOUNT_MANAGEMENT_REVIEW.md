@@ -1,3 +1,5 @@
+> Historical implementation record. Current corrections and verification are documented in [AUDIT_FIXES.md](AUDIT_FIXES.md), dated October 17, 2026.
+
 # War Haven Account Management — review release
 
 Prepared October 16, 2026. Unpublished. Existing Site identity, URL, environment variables, Resend configuration, database and storage bindings are retained. No live account actions, database migrations, collector runs or archive rewrites were performed for this release.

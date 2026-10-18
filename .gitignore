@@ -26,3 +26,6 @@ __pycache__/
 *.bak
 .DS_Store
 .private/
+
+node_modules/
+tests/fixtures/leadership.html

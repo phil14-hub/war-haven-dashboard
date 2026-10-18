@@ -2,8 +2,8 @@ const SharedDashboardSync=(()=>{
  const config=data.sharedActions,enabled=Boolean(config?.enabled&&window.warHavenSession?.proof);
  const pending=new Map(),versions=new Map(),recordIds=new Map();
  const pendingStorage='war-haven-pending-shared:'+data.clanTag;
- if(enabled)try{for(const[token,entry]of JSON.parse(localStorage.getItem(pendingStorage)||'[]'))if(['notes','lineupPlans'].includes(entry.category)&&typeof entry.key==='string'&&entry.value)pending.set(token,entry);}catch{}
- function keepDrafts(){try{localStorage.setItem(pendingStorage,JSON.stringify([...pending]));}catch{status('Browser storage is unavailable. Keep this page open until sharing finishes.');}}
+ const categories=['notes','lineupPlans','exceptions','manualWars','xpCheckpoints','villageProgress','flagResolutions'],known=new Map();
+ function keepDrafts(){LeaderCache.set(pendingStorage,[...pending]);}
 
  const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true});
  const decode=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
@@ -12,7 +12,7 @@ const SharedDashboardSync=(()=>{
  const context=encoder.encode('WarHavenSharedEdit:v1');
  let keys=null,proof=null,proofUntil=0,loading=null,flushing=false,saveTimer=null,refreshKind='clan',refreshTimer=null;
  const requests=new Map(),completedRequests=new Set();
- let lastStatusCheck=0;
+ let lastStatusCheck=0,needsRender=false;
  async function cryptoKeys(){
   if(keys)return keys;const raw=decode(config.encryptionKey);if(raw.length!==64)throw Error('Shared editing configuration needs to be refreshed.');
   keys={enc:await crypto.subtle.importKey('raw',raw.slice(0,32),'AES-CBC',false,['encrypt','decrypt']),mac:await crypto.subtle.importKey('raw',raw.slice(32),{name:'HMAC',hash:'SHA-256'},false,['sign','verify'])};raw.fill(0);return keys;
@@ -21,18 +21,18 @@ const SharedDashboardSync=(()=>{
  async function encrypt(value){const k=await cryptoKeys(),iv=crypto.getRandomValues(new Uint8Array(16)),cipher=new Uint8Array(await crypto.subtle.encrypt({name:'AES-CBC',iv},k.enc,encoder.encode(JSON.stringify(value)))),tag=new Uint8Array(await crypto.subtle.sign('HMAC',k.mac,combine(context,iv,cipher)));return {version:1,iv:encode(iv),ciphertext:encode(cipher),tag:encode(tag)};}
  async function decrypt(envelope){
   const k=await cryptoKeys(),iv=decode(envelope.iv),cipher=decode(envelope.ciphertext),tag=decode(envelope.tag);
-  if(envelope.version!==1||iv.length!==16||tag.length!==32||cipher.length>24000||!await crypto.subtle.verify('HMAC',k.mac,tag,combine(context,iv,cipher)))throw Error('A shared change could not be verified. Your local changes are retained.');
+  if(envelope.version!==1||iv.length!==16||tag.length!==32||cipher.length>64000||!await crypto.subtle.verify('HMAC',k.mac,tag,combine(context,iv,cipher)))throw Error('A shared change could not be verified. Your local changes are retained.');
   const value=JSON.parse(decoder.decode(await crypto.subtle.decrypt({name:'AES-CBC',iv},k.enc,cipher)));
-  if(!['notes','lineupPlans'].includes(value.category)||typeof value.key!=='string'||!value.value||typeof value.value!=='object')throw Error('Invalid shared change.');
+  if(!categories.includes(value.category)||typeof value.key!=='string'||!value.value||typeof value.value!=='object')throw Error('Invalid shared change.');
   return value;
  }
  async function api(path,body={},retry=true){
   if(!proof||Date.now()>=proofUntil){
-   const challengeResponse=await fetch(config.url+'/v1/challenge',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
+   const challengeResponse=await fetch(config.url+'/v1/challenge',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store',signal:AbortSignal.timeout(20000)});
    if(!challengeResponse.ok)throw Error('Shared saving is temporarily unavailable.');
    const challenge=await challengeResponse.json();proof=await window.warHavenSession.proof(challenge.salt,challenge.rounds);proofUntil=Date.now()+60000;
   }
-  const response=await fetch(config.url+path,{method:'POST',headers:{'Content-Type':'application/json','X-War-Haven-Proof':proof},body:JSON.stringify(body),cache:'no-store'});
+  const response=await fetch(config.url+path,{method:'POST',headers:{'Content-Type':'application/json','X-War-Haven-Proof':proof},body:JSON.stringify(body),cache:'no-store',signal:AbortSignal.timeout(20000)});
   const result=await response.json();
   if(response.status===401&&retry){proof=null;return api(path,body,false);}
   if(!response.ok){const error=Error(response.status===401?'Reload and unlock the current dashboard to restore shared access.':result.error||'Shared saving is temporarily unavailable.');error.status=response.status;error.result=result;throw error;}
@@ -44,14 +44,14 @@ const SharedDashboardSync=(()=>{
   const token=clear.category+':'+clear.key;versions.set(record.id,record.revision);recordIds.set(token,record.id);
   const draft=pending.get(token);
   if(draft?.migration&&JSON.stringify({...draft.value,updatedAt:null})===JSON.stringify({...clear.value,updatedAt:null})){pending.delete(token);keepDrafts();}
-  if(pending.has(token))return;
-  edits[clear.category]||={};edits[clear.category][clear.key]={...clear.value,updatedAt:record.updatedAt};persist();
+  if(pending.has(token))return;if(JSON.stringify(edits[clear.category]?.[clear.key])===JSON.stringify({...clear.value,updatedAt:record.updatedAt}))return;
+  edits[clear.category]||={};known.set(token,JSON.stringify({...clear.value,updatedAt:record.updatedAt}));edits[clear.category][clear.key]={...clear.value,updatedAt:record.updatedAt};needsRender=true;persist();
   if(clear.category==='notes'&&selectedTag===clear.key&&$('player-dialog').open&&$('player-notes').value!==(clear.value.text||''))$('player-notes').value=clear.value.text||'';
   if(clear.category==='lineupPlans'&&document.body.dataset.page==='planner'){lineupLoaded='';lineupSelection=null;renderWarPlanner();}
  }
  async function load(){
   if(loading)return loading;
-  loading=(async()=>{const result=await api('/v1/records');for(const record of result.records||[]){const clear=await decrypt(record.envelope);if(record.id!==await identifier(clear.category,clear.key))throw Error('A shared record failed identity verification.');accept(record,clear);}if(!pending.size)status('Shared notes and plans are up to date.');})().finally(()=>loading=null);
+  loading=(async()=>{const result=await api('/v1/records');for(const record of result.records||[]){const clear=await decrypt(record.envelope);if(record.id!==await identifier(clear.category,clear.key))throw Error('A shared record failed identity verification.');accept(record,clear);}if(needsRender){needsRender=false;const draft=WarHavenUI.captureDraft(document.body),player=$('player-dialog')?.open?selectedTag:null;render();if(player)openPlayer(player);WarHavenUI.restoreDraft(document.body,draft);}if(!pending.size)status('Shared leadership edits are up to date.');})().finally(()=>loading=null);
   return loading;
  }
  function changed(category,key,value){
@@ -72,7 +72,7 @@ const SharedDashboardSync=(()=>{
     try{
      const result=await api('/v1/record',{id,kind:entry.category,operationId:entry.operationId,expectedRevision:entry.baseRevision||null,envelope:entry.envelope});
      versions.set(id,result.record.revision);
-     if(pending.get(token)===entry){pending.delete(token);edits[entry.category][entry.key].updatedAt=result.record.updatedAt;persist();}else if(pending.get(token)?.baseRevision===entry.baseRevision)pending.get(token).baseRevision=result.record.revision;keepDrafts();
+     if(pending.get(token)===entry){pending.delete(token);edits[entry.category][entry.key].updatedAt=result.record.updatedAt;known.set(token,JSON.stringify(edits[entry.category][entry.key]));persist();}else if(pending.get(token)?.baseRevision===entry.baseRevision)pending.get(token).baseRevision=result.record.revision;keepDrafts();
     }catch(error){
      if(error.status===409){entry.conflict=true;entry.remote=error.result.record;keepDrafts();status('Another leader saved a change to the same item. Your draft is kept.');conflictControls();}
      else throw error;
@@ -83,7 +83,7 @@ const SharedDashboardSync=(()=>{
   finally{flushing=false;if([...pending.values()].some(p=>!p.conflict)){clearTimeout(saveTimer);saveTimer=setTimeout(flush,5000);}}
  }
  function seedDrafts(){
-  for(const category of ['notes','lineupPlans'])for(const[key,value]of Object.entries(edits[category]||{})){
+  for(const category of categories)for(const[key,value]of Object.entries(edits[category]||{})){
    if(!pending.has(category+':'+key)&&JSON.stringify(value)!==JSON.stringify(data.edits?.[category]?.[key])){changed(category,key,value);pending.get(category+':'+key).migration=true;keepDrafts();}
   }
  }
@@ -114,9 +114,9 @@ const SharedDashboardSync=(()=>{
   if(!request){progress.value=0;label.textContent='Ready to start';estimate.textContent='';return;}
   const active=request.status==='running',queued=request.status==='pending',elapsed=active?Math.max(0,(Date.now()-Date.parse(request.startedAt))/1000):0,duration=request.estimateSeconds||120;
   const percent=request.status==='completed'?100:queued?0:Math.min(95,Math.max(request.progress||0,Math.round(5+85*Math.min(1,elapsed/duration))));
-  progress.value=percent;label.textContent=percent+'% · '+({pending:'Waiting to start',starting:'Starting',collecting:'Collecting data',publishing:'Saving encrypted data',deploying:'Publishing website',completed:'Complete',failed:'Update failed'}[request.phase||request.status]||'Updating');
+  progress.value=percent;label.textContent=percent+'% · '+({pending:'Waiting to start',starting:'Starting',collecting:'Collecting data',publishing:'Saving encrypted data',deploying:'Publishing website',completed:'Complete',failed:'Update failed',partial:'Portal sync pending'}[request.phase||request.status]||'Updating');
   const minutes=seconds=>Math.max(1,Math.ceil(seconds/60))+' min';
-  estimate.textContent=queued?'Usually starts within 5 minutes, then about '+minutes(duration)+'. Cloud scheduling can take longer.':active?(elapsed<duration?'Estimated '+minutes(duration-elapsed)+' remaining.':'Taking longer than estimated. The update is still running.'):request.status==='completed'?'Complete. New data appears automatically while this dashboard stays open.':'Your previous dashboard is still available.';
+  estimate.textContent=request.status==='partial'?'GitHub is published. Portal synchronization is pending and will retry independently.':queued?'Usually starts within 5 minutes, then about '+minutes(duration)+'. Cloud scheduling can take longer.':active?(elapsed<duration?'Estimated '+minutes(duration-elapsed)+' remaining.':'Taking longer than estimated. The update is still running.'):request.status==='completed'?'Complete. New data appears automatically while this dashboard stays open.':'Your previous dashboard is still available.';
  }
  async function refreshStatus(kind=refreshKind){
   try{const request=(await api('/v1/refresh/status',{kind})).request;if(request)requests.set(kind,request);else requests.delete(kind);
@@ -156,11 +156,12 @@ const SharedDashboardSync=(()=>{
   clearInterval(refreshTimer);refreshTimer=setInterval(poll,5000);poll();
  }
  async function start(){
-  if(!enabled)return;
-  const banner=document.createElement('div');banner.id='shared-save-status';banner.className='notice';banner.setAttribute('role','status');banner.innerHTML='<span data-shared-message>Loading shared notes and plans…</span> <button id="shared-use-latest" hidden>Load their change</button> <button id="shared-keep-draft" hidden>Save my draft</button>';
+  if(!enabled)return;await LeaderCache.ready();try{for(const[token,entry]of LeaderCache.get(pendingStorage)||[])if(categories.includes(entry.category)&&typeof entry.key==='string'&&entry.value)pending.set(token,entry);}catch{}
+  for(const category of categories)for(const[key,value]of Object.entries(edits[category]||{}))known.set(category+':'+key,JSON.stringify(value));
+  const banner=document.createElement('div');banner.id='shared-save-status';banner.className='notice';banner.setAttribute('role','status');banner.innerHTML='<span data-shared-message>Loading shared leadership edits…</span> <button id="shared-use-latest" hidden>Load their change</button> <button id="shared-keep-draft" hidden>Save my draft</button>';
   $('overview').parentElement.prepend(banner);
-  $('howto-saving').textContent='Notes and lineup plans save automatically for every leader using this dashboard. Wait for Shared changes saved before closing. If two leaders edit the same item, your draft is kept and you can load their change or save yours. Offline drafts stay on this device and retry when connected. Other edits and captured history can still be exported with Management → Save changes / backup.';
-  $('shared-storage-info').textContent='Notes and lineup plans save automatically and sync between leaders. Other edits remain in this browser until backed up and imported.';
+  $('howto-saving').textContent='Leadership edits save automatically for every leader using this dashboard. Wait for Shared changes saved before closing. If two leaders edit the same item, your draft is kept and you can load their change or save yours. Offline drafts stay on this device and retry when connected. Captured history can still be exported with Management → Save changes / backup.';
+  $('shared-storage-info').textContent='Leadership edits save automatically and sync between leaders. Attendance exceptions, completed-war corrections, XP checkpoints, reviewed flags and imports are included.';
   $('shared-use-latest').onclick=async()=>{const found=[...pending].find(([,v])=>v.conflict);if(!found)return;const[token,entry]=found;pending.delete(token);keepDrafts();if(entry.remote)accept(entry.remote,await decrypt(entry.remote.envelope));conflictControls();status('Loaded the other leader’s saved change.');};
   $('shared-keep-draft').onclick=()=>{const entry=[...pending.values()].find(v=>v.conflict);if(!entry)return;if(entry.remote){versions.set(entry.remote.id,entry.remote.revision);entry.baseRevision=entry.remote.revision;}entry.conflict=false;entry.remote=null;entry.operationId=crypto.randomUUID();keepDrafts();conflictControls();flush();};
   document.addEventListener('input',event=>{if(event.target.id!=='player-notes'||!selectedTag)return;const value={text:event.target.value.slice(0,6000),updatedAt:new Date().toISOString()};edits.notes[selectedTag]=value;persist();changed('notes',selectedTag,value);});
@@ -168,9 +169,10 @@ const SharedDashboardSync=(()=>{
   document.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(['planner-suggest','planner-save'].includes(button.id))lineupChanged();if(button.id==='save-note'&&selectedTag&&edits.notes[selectedTag])changed('notes',selectedTag,edits.notes[selectedTag]);});
   window.addEventListener('online',flush);
   seedDrafts();wireRefresh();
-  try{await load();conflictControls();for(const category of ['notes','lineupPlans'])for(const [key,value]of Object.entries(edits[category]||{}))if(!recordIds.has(category+':'+key)&&!pending.has(category+':'+key))changed(category,key,value);}
+  try{await load();conflictControls();for(const category of categories)for(const [key,value]of Object.entries(edits[category]||{}))if(!recordIds.has(category+':'+key)&&!pending.has(category+':'+key))changed(category,key,value);}
   catch(error){status(error.message+' Local notes remain available.');}
   setInterval(()=>{if(!document.hidden)load().catch(error=>status(error.message));if(pending.size)flush();},20000);
  }
- return {start,changed,mergeSnapshotEdits};
+ function trackEdits(){if(!enabled)return;for(const category of categories){for(const[key,value]of Object.entries(edits[category]||{})){const token=category+':'+key,encoded=JSON.stringify(value);if(known.has(token)&&known.get(token)!==encoded){known.set(token,encoded);changed(category,key,value);}else if(!known.has(token)) {known.set(token,encoded);changed(category,key,value);}}for(const token of [...known.keys()].filter(t=>t.startsWith(category+':'))){const key=token.slice(category.length+1);if(!(key in (edits[category]||{}))){const tombstone={deleted:true,updatedAt:new Date().toISOString()};edits[category][key]=tombstone;known.set(token,JSON.stringify(tombstone));changed(category,key,tombstone);}}}}
+ return {start,changed,mergeSnapshotEdits,trackEdits};
 })();

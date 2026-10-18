@@ -3,7 +3,7 @@ const raw=Buffer.alloc(64,42),key=raw.toString('base64'),nodes={};
 const node=id=>nodes[id]||=({textContent:'',hidden:false,value:'',attrs:{},classes:new Set(),classList:{toggle(name,enabled){enabled?node(id).classes.add(name):node(id).classes.delete(name);}},setAttribute(name,value){this.attrs[name]=value;},querySelector(selector){return node(id+selector);}});
 let server=null,lostReply=false,writes=0,publicationChecks=0;
 const refreshRequests={};
-const edits={notes:{'#P0Y':{text:'original'}}},context={data:{clanTag:'#P0Y',lastSuccessfulSync:'2030-01-01T01:00:00Z',sharedActions:{enabled:true,encryptionKey:key,url:'https://example.invalid'}},WarTracker:{mergeEdits:(a,b)=>({notes:{...a.notes,...b.notes}})},recruiterReport:{updatedAt:'2030-01-01T01:00:00Z'},checkPublishedUpdate:async options=>{assert.equal(options.force,true);publicationChecks++;},window:{warHavenSession:{proof:async()=>''}},crypto:webcrypto,TextEncoder,TextDecoder,atob,btoa,console,Map,Date,JSON,Uint8Array,setTimeout:()=>1,clearTimeout(){},setInterval(){},localStorage:{getItem:()=>null,setItem(){}},document:{body:{dataset:{}},hidden:false},$:node,persist(){},edits,selectedTag:'',fetch:async(url,options)=>{
+const edits={notes:{'#P0Y':{text:'original'}}},context={data:{clanTag:'#P0Y',lastSuccessfulSync:'2030-01-01T01:00:00Z',sharedActions:{enabled:true,encryptionKey:key,url:'https://example.invalid'}},WarTracker:{mergeEdits:(a,b)=>({notes:{...a.notes,...b.notes}})},recruiterReport:{updatedAt:'2030-01-01T01:00:00Z'},checkPublishedUpdate:async options=>{assert.equal(options.force,true);publicationChecks++;},window:{warHavenSession:{proof:async()=>''}},crypto:webcrypto,TextEncoder,TextDecoder,atob,btoa,console,Map,Date,JSON,Uint8Array,setTimeout:()=>1,clearTimeout(){},setInterval(){},localStorage:{getItem:()=>null,setItem(){}},WarHavenUI:{captureDraft:()=>null,restoreDraft(){}},render(){},openPlayer(){},AbortSignal,LeaderCache:{set(){},get(){return []},ready:async()=>{}},document:{body:{dataset:{}},hidden:false},$:node,persist(){},edits,selectedTag:'',fetch:async(url,options)=>{
  const body=JSON.parse(options.body),path=new URL(url).pathname;
  const response=(status,value)=>({status,ok:status<400,json:async()=>value});
  if(path==='/v1/challenge')return response(200,{salt:Buffer.alloc(16).toString('base64'),rounds:600000});
@@ -17,7 +17,7 @@ const edits={notes:{'#P0Y':{text:'original'}}},context={data:{clanTag:'#P0Y',las
  }
  throw Error(path);
 }};
-let source=fs.readFileSync('shared_dashboard.js','utf8').replace('return {start,changed,mergeSnapshotEdits};','return {start,changed,mergeSnapshotEdits,encrypt,decrypt,flush,accept,pending,updateProgress,seedDrafts,setBusy,refreshStatus};');
+let source=fs.readFileSync('shared_dashboard.js','utf8').replace('return {start,changed,mergeSnapshotEdits,trackEdits};','return {start,changed,mergeSnapshotEdits,encrypt,decrypt,flush,accept,pending,updateProgress,seedDrafts,setBusy,refreshStatus};');
 const app=vm.runInNewContext(source+';SharedDashboardSync',context);
 (async()=>{
  const clear={category:'notes',key:'#P0Y',value:{text:'Shared fixture'}};

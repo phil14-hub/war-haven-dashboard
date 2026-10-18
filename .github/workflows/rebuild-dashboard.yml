@@ -1,0 +1,41 @@
+name: Publish dashboard code from saved history
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - Clash_War_Tracker.py
+      - shared/**
+      - shared_dashboard.js
+      - live_dashboard.js
+      - member_accounts.js
+      - recruitment_dashboard.js
+      - recruitment_dashboard.css
+      - upgrade_progress.py
+      - upgrade_catalog.json
+      - github_render_dashboard.py
+      - .github/workflows/rebuild-dashboard.yml
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: war-haven-clan-update
+  cancel-in-progress: false
+jobs:
+  publish-code:
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rebuild over the verified archive and publish matching projections
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
+        run: python github_render_dashboard.py
