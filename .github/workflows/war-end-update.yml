@@ -34,6 +34,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install recruiter regression dependency
+        run: python -m pip install --disable-pip-version-check requests==2.34.2
       - name: Test final-war timing
         run: python -m unittest discover -s tests -v
       - name: Check whether a recorded war needs a follow-up

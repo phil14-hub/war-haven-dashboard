@@ -12,4 +12,5 @@ for v in p['troops']:
 s['profiles']={'#P0Q':p,'#P0Y':profile(14)}
 s['wars']=[{'id':'w1','kind':'Regular','state':'warEnded','final':True,'rosterComplete':True,'teamSize':2,'endTime':'2026-10-16T10:00:00Z','startTime':'2026-10-15T10:00:00Z','attacksPerMember':2,'expEarned':150,'opponent':{'name':'Fixture clan'},'participants':[{'tag':'#P0Q','name':'Omid fixture','attacksUsed':0,'townHallLevel':18},{'tag':'#P0Y','name':'Attacker fixture','attacksUsed':2,'townHallLevel':14,'attacks':[{'stars':3},{'stars':2}]}]}]
 s['clanHistory']=[{'at':'2026-10-15T10:00:00Z','clanLevel':3,'members':3,'leaguePoints':100},{'at':'2026-10-17T10:00:00Z','clanLevel':4,'members':3,'leaguePoints':200}]
-t.capture_leadership(s);t.write_dashboard(s,B/'tests/fixtures/leadership.html')
+destination=B/'tests/fixtures/leadership.html';destination.parent.mkdir(parents=True,exist_ok=True)
+t.capture_leadership(s);t.write_dashboard(s,destination)
