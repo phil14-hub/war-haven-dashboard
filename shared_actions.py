@@ -85,7 +85,7 @@ def decrypt_record(envelope, key, tracker):
         if not 1 <= count <= 16 or padded[-count:] != bytes([count]) * count:
             raise ValueError()
         value = json.loads(padded[:-count])
-        if not isinstance(value, dict) or value.get('category') not in ('notes', 'lineupPlans', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions'):
+        if not isinstance(value, dict) or value.get('category') not in ('notes', 'lineupPlans', 'lineupDrafts', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions'):
             raise ValueError()
         return value
     except (ValueError, KeyError, TypeError, IndexError):
@@ -108,7 +108,7 @@ def pull(state, client, tracker):
     if not prepare(state):
         return
     result = client.request('/v1/records')
-    edits = {k: {} for k in ('notes', 'lineupPlans', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions')}
+    edits = {k: {} for k in ('notes', 'lineupPlans', 'lineupDrafts', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions')}
     for record in result.get('records', []):
         clear = decrypt_record(record['envelope'], state['sharedActions']['encryptionKey'], tracker)
         category, key, value = clear['category'], clear.get('key'), clear.get('value')
@@ -124,8 +124,15 @@ def pull(state, client, tracker):
             raise SharedActionsError('Invalid attendance exception.')
         if category == 'notes' and (tracker.normalize_tag(key) != key or not isinstance(value.get('text'), str) or len(value['text']) > 6000):
             raise SharedActionsError('Invalid shared note.')
-        if category == 'lineupPlans':
-            tracker.validate_lineup_edits({'lineupPlans': {key: value}})
+        if category in ('lineupPlans','lineupDrafts'):
+            checked={category:{key:value}}
+            tracker.validate_lineup_edits(checked)
+            for collection in ('lineupPlans','lineupDrafts'):
+                for mode,plan in checked.get(collection,{}).items():
+                    previous=edits[collection].get(mode)
+                    if not previous or str(record['updatedAt'])>=str(previous.get('updatedAt','')):
+                        edits[collection][mode]={**plan,'updatedAt':record['updatedAt']}
+            continue
         if category == 'manualWars':
             tracker.apply_snapshot(tracker.new_state(state['clanTag']), {'clanTag': state['clanTag'], 'edits': {'manualWars': {key: value}}})
         if category in ('xpCheckpoints', 'villageProgress', 'flagResolutions') and (len(key)>200 or len(json.dumps(value))>64000):
@@ -133,7 +140,7 @@ def pull(state, client, tracker):
         # The service timestamp resolves updates independently of device clocks.
         edits[category][key] = {**value, 'updatedAt': record['updatedAt']}
     merged = tracker.merge_edits(state.get('edits'), {})
-    for category in ('notes', 'lineupPlans', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions'):
+    for category in ('notes', 'lineupPlans', 'lineupDrafts', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions'):
         merged[category].update(edits[category])
     state['edits'] = merged
 

@@ -2,7 +2,7 @@ const SharedDashboardSync=(()=>{
  const config=data.sharedActions,enabled=Boolean(config?.enabled&&window.warHavenSession?.proof);
  const pending=new Map(),versions=new Map(),recordIds=new Map();
  const pendingStorage='war-haven-pending-shared:'+data.clanTag;
- const categories=['notes','lineupPlans','exceptions','manualWars','xpCheckpoints','villageProgress','flagResolutions'],known=new Map();
+ const categories=['notes','lineupPlans','lineupDrafts','exceptions','manualWars','xpCheckpoints','villageProgress','flagResolutions'],known=new Map();
  function keepDrafts(){LeaderCache.set(pendingStorage,[...pending]);}
 
  const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true});
@@ -41,13 +41,14 @@ const SharedDashboardSync=(()=>{
  function status(message){const el=$('shared-save-status');if(el)el.querySelector('[data-shared-message]').textContent=message;}
  function conflictControls(){const found=[...pending.values()].some(p=>p.conflict);$('shared-use-latest').hidden=!found;$('shared-keep-draft').hidden=!found;}
  function accept(record,clear){
+  if(['lineupPlans','lineupDrafts'].includes(clear.category))WarTracker.validateLineupPlans({[clear.category]:{[clear.key]:JSON.parse(JSON.stringify(clear.value))}});
   const token=clear.category+':'+clear.key;versions.set(record.id,record.revision);recordIds.set(token,record.id);
   const draft=pending.get(token);
   if(draft?.migration&&JSON.stringify({...draft.value,updatedAt:null})===JSON.stringify({...clear.value,updatedAt:null})){pending.delete(token);keepDrafts();}
   if(pending.has(token))return;if(JSON.stringify(edits[clear.category]?.[clear.key])===JSON.stringify({...clear.value,updatedAt:record.updatedAt}))return;
-  edits[clear.category]||={};known.set(token,JSON.stringify({...clear.value,updatedAt:record.updatedAt}));edits[clear.category][clear.key]={...clear.value,updatedAt:record.updatedAt};needsRender=true;persist();
+  edits[clear.category]||={};known.set(token,JSON.stringify({...clear.value,updatedAt:record.updatedAt}));edits[clear.category][clear.key]={...clear.value,updatedAt:record.updatedAt};if(['lineupPlans','lineupDrafts'].includes(clear.category))edits=WarTracker.mergeEdits(edits,{});needsRender=true;persist();
   if(clear.category==='notes'&&selectedTag===clear.key&&$('player-dialog').open&&$('player-notes').value!==(clear.value.text||''))$('player-notes').value=clear.value.text||'';
-  if(clear.category==='lineupPlans'&&document.body.dataset.page==='planner'){lineupLoaded='';lineupSelection=null;renderWarPlanner();}
+  if(['lineupPlans','lineupDrafts'].includes(clear.category)&&document.body.dataset.page==='planner'){lineupLoaded='';lineupSelection=null;renderWarPlanner();}
  }
  async function load(){
   if(loading)return loading;
@@ -89,8 +90,8 @@ const SharedDashboardSync=(()=>{
  }
  function lineupChanged(){
   if(!enabled||!lineupSelection)return;
-  const mode=lineupOptions.mode,value={options:{...lineupOptions},tags:[...lineupSelection],updatedAt:new Date().toISOString()};
-  edits.lineupPlans||={};edits.lineupPlans[mode]=value;persist();changed('lineupPlans',mode,value);
+  const mode=lineupOptions.mode,value={options:{...lineupOptions},tags:[...lineupSelection],baseCommitId:lineupBaseCommitId,updatedAt:new Date().toISOString()};
+  edits.lineupDrafts||={};edits.lineupDrafts[mode]=value;persist();changed('lineupDrafts',mode,value);
  }
  function mergeSnapshotEdits(incoming){
   const merged=WarTracker.mergeEdits(incoming,edits);
@@ -160,7 +161,7 @@ const SharedDashboardSync=(()=>{
   for(const category of categories)for(const[key,value]of Object.entries(edits[category]||{}))known.set(category+':'+key,JSON.stringify(value));
   const banner=document.createElement('div');banner.id='shared-save-status';banner.className='notice';banner.setAttribute('role','status');banner.innerHTML='<span data-shared-message>Loading shared leadership edits…</span> <button id="shared-use-latest" hidden>Load their change</button> <button id="shared-keep-draft" hidden>Save my draft</button>';
   $('overview').parentElement.prepend(banner);
-  $('howto-saving').textContent='Leadership edits save automatically for every leader using this dashboard. Wait for Shared changes saved before closing. If two leaders edit the same item, your draft is kept and you can load their change or save yours. Offline drafts stay on this device and retry when connected. Captured history can still be exported with Management → Save changes / backup.';
+  $('howto-saving').textContent='Leadership edits save automatically for every leader using this dashboard. Working lineup drafts are separate from committed lineups. Wait for Shared changes saved before closing. If two leaders edit the same item, your draft is kept and you can load their change or save yours. Offline drafts stay on this device and retry when connected. Captured history can still be exported with Management → Export private backup.';
   $('shared-storage-info').textContent='Leadership edits save automatically and sync between leaders. Attendance exceptions, completed-war corrections, XP checkpoints, reviewed flags and imports are included.';
   $('shared-use-latest').onclick=async()=>{const found=[...pending].find(([,v])=>v.conflict);if(!found)return;const[token,entry]=found;pending.delete(token);keepDrafts();if(entry.remote)accept(entry.remote,await decrypt(entry.remote.envelope));conflictControls();status('Loaded the other leader’s saved change.');};
   $('shared-keep-draft').onclick=()=>{const entry=[...pending.values()].find(v=>v.conflict);if(!entry)return;if(entry.remote){versions.set(entry.remote.id,entry.remote.revision);entry.baseRevision=entry.remote.revision;}entry.conflict=false;entry.remote=null;entry.operationId=crypto.randomUUID();keepDrafts();conflictControls();flush();};
