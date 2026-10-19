@@ -54,6 +54,8 @@ Run the script when you want fresh data. It saves history on GitHub and updates 
 
 All authorized viewers can unlock the site with the shared passphrase. Viewing does not grant repository write access. Leadership edits save automatically to encrypted shared records across leaders. Attendance exceptions, war corrections, XP checkpoints, village imports and reviewed flags also share automatically. Backups retain the complete captured history. GitHub Pages serves the encrypted snapshots and the separate service handles shared actions.
 
+**Kick flags** groups two severities. Two consecutive confirmed, unexcused 0/2 regular-war appearances produce a **Kick flag**. Missing both attacks, using at least one in a later assigned regular war, then missing both again produces an amber **Possible kick** warning for leadership review. Sit-outs and approved excuses do not count as participation; incomplete results cannot connect a repeat pattern. Possible-kick warnings remain until the existing historical-attendance review control clears them. The underlying war records and attack-use totals are preserved.
+
 Useful arguments:
 
 ```text
