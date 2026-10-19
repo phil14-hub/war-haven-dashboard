@@ -14,6 +14,8 @@ on:
       - upgrade_progress.py
       - upgrade_catalog.json
       - github_render_dashboard.py
+      - member_exports.py
+      - snapshot_audit.py
       - .github/workflows/rebuild-dashboard.yml
 permissions:
   contents: read
@@ -34,6 +36,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Rebuild over the verified archive and publish matching projections
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}

@@ -44,7 +44,7 @@ def capital_evidence(history, as_of):
     return (total if series else None), series
 
 
-def donation_evidence(history, as_of):
+def donation_intervals(history, as_of):
     previous = stamp(history.get('since'))
     end = min(as_of, stamp(history.get('leftAt')) or as_of)
     total, series = 0, []
@@ -54,8 +54,19 @@ def donation_evidence(history, as_of):
             continue
         total += value
         previous = stop
-        series.append({'at': sample['end'], 'value': total})
+        series.append({**sample, 'total': total})
     return series
+
+
+def donation_evidence(history, as_of):
+    return [{'at': v['end'], 'value': v['total']} for v in donation_intervals(history, as_of)]
+
+
+def donation_summary(history, as_of):
+    intervals = donation_intervals(history, as_of)
+    since = history.get('donationTrackingSince') or (intervals[0]['start'] if intervals else None) or history.get('since')
+    total = intervals[-1]['total'] if intervals else (0 if stamp(since) and stamp(since) <= as_of else None)
+    return {'total': total, 'since': since}
 
 
 def build_snapshot(state, tracker):
@@ -77,6 +88,7 @@ def build_snapshot(state, tracker):
         history = state.get('memberHistory', {}).get(tag) or {}
         capital, capital_series = capital_evidence(history, stamp(at))
         donations = donation_evidence(history, stamp(at))
+        observed_donations = donation_summary(history, stamp(at))
         own_wars = []
         stats = {'used': 0, 'allowed': 0, 'appearances': 0, 'stars': 0, 'attacks': 0, 'triples': 0, 'destruction': 0, 'destructionAttacks': 0}
         for war in sorted(wars.values(), key=lambda w: stamp(w.get('endTime'))):
@@ -144,7 +156,10 @@ def build_snapshot(state, tracker):
         view = {'tag': tag, 'name': str(player.get('name') or tag), 'townHallLevel': player.get('townHallLevel') or profile.get('townHallLevel'),
                 'role': player.get('role'), 'since': history.get('since'), 'warPreference': player.get('warPreference'),
                 'league': {'points': league.get('points'), 'name': league.get('name') or league.get('tier')},
-                'seasonDonations': player.get('donations'), 'donationsReceived': player.get('donationsReceived'),
+                'seasonDonations': player.get('donations') if count(player.get('donations')) else None,
+                'donationsReceived': player.get('donationsReceived') if count(player.get('donationsReceived')) else None,
+                'trophies': player.get('trophies') if count(player.get('trophies')) else None,
+                'observedDonations': observed_donations,
                 'capitalGold': capital, 'capitalSeries': capital_series, 'donationSeries': donations,
                 'raidLoot': sum(completed_loot) if completed_loot else None, 'raids': raids, 'wars': own_wars,
                 'warStats': stats, 'leagueSeries': league_series, 'armySeries': army_series, 'armyPercent': army.get('completionPercent'), 'army': army,

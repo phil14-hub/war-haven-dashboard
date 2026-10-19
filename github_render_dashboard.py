@@ -5,6 +5,7 @@ import tempfile
 import github_collector
 import member_exports
 import shared_actions
+import snapshot_audit
 
 
 def run(env=None, tracker=None):
@@ -19,6 +20,7 @@ def run(env=None, tracker=None):
     client=shared_actions.Client(config['password'])
     if shared_actions.ENABLED:
         shared_actions.pull(state,client,tracker)
+    snapshot_audit.verify(state, tracker)
     with tempfile.TemporaryDirectory(prefix='war-haven-code-release-') as folder:
         path=Path(folder)/'index.html'
         tracker.write_dashboard(state,path,password=config['password'])

@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [index.html, data/war_tracker_state.enc.json, github_sync_portal.py, member_exports.py, shared_actions.py, .github/workflows/sync-portal.yml]
+    paths: [index.html, data/war_tracker_state.enc.json, github_sync_portal.py, member_exports.py, snapshot_audit.py, shared_actions.py, .github/workflows/sync-portal.yml]
   schedule:
     - cron: '17,47 * * * *'
 permissions:
@@ -26,6 +26,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Publish the saved revision without another clan collection
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}

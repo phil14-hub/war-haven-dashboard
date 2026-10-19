@@ -6,6 +6,7 @@ from pathlib import Path
 import github_collector
 import member_exports
 import shared_actions
+import snapshot_audit
 
 
 def pages_contains_publication(config, tracker, page_sha, history_sha):
@@ -40,6 +41,7 @@ def run(env=None, tracker=None):
     if not archive:
         raise ValueError('The saved clan archive is missing. No publication was made.')
     state = tracker.decrypt_history(archive['envelope'], config['password'])
+    snapshot_audit.verify(state, tracker)
     record = tracker.github_request(config, 'GET', '/repos/'+repository+'/contents/index.html?ref='+head)
     if not record.get('content'):
         record = tracker.github_request(config, 'GET', '/repos/'+repository+'/git/blobs/'+record['sha'])
