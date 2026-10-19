@@ -1,7 +1,7 @@
 var WarHavenUI = /* @__PURE__ */ (() => {
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   let preferences = {};
-  const number = (v) => Number.isFinite(v) ? v.toLocaleString(void 0, { maximumFractionDigits: 2 }) : "Unknown";
+  const number = (v, digits = 2) => Number.isFinite(v) ? v.toLocaleString(void 0, { maximumFractionDigits: digits }) : "Unknown";
   function locale(p) {
     return { mdy: "en-US", dmy: "en-GB", iso: "en-CA" }[p.dateFormat];
   }
@@ -28,7 +28,7 @@ var WarHavenUI = /* @__PURE__ */ (() => {
     if (p.timeZone !== "auto") new Intl.DateTimeFormat("en", { timeZone: p.timeZone });
     return p;
   }
-  function chart(label, series, { asOf, percent: pc = false, step = true, targets = [], id = "wh-chart-" + Math.random().toString(36).slice(2) } = {}) {
+  function chart(label, series, { asOf, percent: pc = false, step = true, targets = [], precision, id = "wh-chart-" + Math.random().toString(36).slice(2) } = {}) {
     const sorted = (series || []).filter((p) => Number.isFinite(Date.parse(p.at))).slice().sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
     const points = [];
     for (const p of sorted) if (!points.length || JSON.stringify([p.value, p.lowerBound || false, p.townHall]) !== JSON.stringify([points.at(-1).value, points.at(-1).lowerBound || false, points.at(-1).townHall])) points.push(p);
@@ -36,8 +36,9 @@ var WarHavenUI = /* @__PURE__ */ (() => {
     if (!valid.length) return '<p class="chart-empty">No observations captured for this metric yet.</p>';
     const first = Date.parse(points[0].at), last = Date.parse(points.at(-1).at), end = Math.max(last, Date.parse(asOf) || last), start = first === end ? first - 864e5 : first;
     const min = Math.min(0, ...valid.map((p) => p.value)), max = Math.max(pc ? 100 : 1, ...valid.map((p) => p.value), ...targets.map((p) => p.value)), mobile = globalThis.innerWidth < 600, width = mobile ? 390 : 640, L = mobile ? 65 : 76, R = mobile ? 370 : 603, T = 24, B = 205;
-    const exact = (v) => v.toLocaleString(void 0, { maximumSignificantDigits: 21 }) + (pc ? "%" : "");
-    const x = (at) => L + (Date.parse(at) - start) / (end - start) * (R - L), y = (v) => B - (v - min) / (max - min || 1) * (B - T), fmt = (v) => number(v) + (pc ? "%" : "");
+    const digits = precision ?? (pc ? 1 : valid.every(p => Number.isInteger(p.value)) ? 0 : 2);
+    const exact = (v) => number(v, digits) + (pc ? "%" : "");
+    const x = (at) => L + (Date.parse(at) - start) / (end - start) * (R - L), y = (v) => B - (v - min) / (max - min || 1) * (B - T), fmt = exact;
     let connected = false, path = "", previous;
     for (const p of points) {
       if (!Number.isFinite(p.value) || p.lowerBound) {
@@ -59,11 +60,21 @@ var WarHavenUI = /* @__PURE__ */ (() => {
       return `<g tabindex="0" role="button" data-wh-inspect="${id}" data-wh-detail="${esc(detail)}" aria-label="${esc(detail)}"><circle cx="${x(p.at)}" cy="${y(p.value)}" r="15" class="wh-hit"/><circle cx="${x(p.at)}" cy="${y(p.value)}" r="${p.lowerBound ? 5 : 4}" class="wh-dot${p.lowerBound ? " wh-floor" : ""}"/></g>`;
     }).join("")}${[0, 0.5, 1].map((n, i) => `<text x="${L + (R - L) * n}" y="238" text-anchor="${i === 0 ? "start" : i === 2 ? "end" : "middle"}" class="wh-axis">${esc(date(new Date(start + (end - start) * n).toISOString(), preferences, true))}</text>`).join("")}</svg><p id="${id}" class="wh-inspect" aria-live="polite"></p><div class="wh-chart-tooltip" role="tooltip" hidden></div><small class="wh-chart-help">Tab enters the chart. Use arrow keys to move, Home/End for first/latest, and Escape to dismiss. Exact values are below.</small><small class="muted">Last synced ${esc(date(asOf || points.at(-1).at))} · ${valid.length} value changes</small><details class="wh-data"><summary>View recorded values</summary><div class="table-scroll table-wrap"><table><thead><tr><th>Observed</th><th>${esc(label)}</th><th>Details</th></tr></thead><tbody>${points.map((p) => `<tr><td>${esc(date(p.at))}</td><td>${Number.isFinite(p.value) ? esc((p.lowerBound ? "≥ " : "") + exact(p.value)) : "Unknown"}</td><td>${esc(p.detail || "")}</td></tr>`).join("")}</tbody></table></div></details></div>`;
   }
+  function seasonDonations(roster, {asOf, id = 'season-donations-chart'} = {}) {
+    const known = p => Number.isInteger(p.donations) && p.donations >= 0;
+    const members = [...(roster || [])].sort((a,b) => Number(known(b))-Number(known(a)) || (b.donations || 0)-(a.donations || 0) || String(a.name).localeCompare(String(b.name)));
+    if (!members.length) return '<p class="chart-empty">The season chart will appear when the clan roster is available.</p>';
+    const captured = members.filter(known), total = captured.reduce((sum,p) => sum+p.donations,0);
+    const width = Math.max(600, members.length*46+100), L = 72, R = width-28, T = 30, B = 222, max = Math.max(1,...captured.map(p=>p.donations));
+    const x = i => L+(i+.5)*(R-L)/members.length, y = n => B-n/max*(B-T);
+    const description = p => String(p.name || p.tag)+' ('+p.tag+') · '+(known(p)?number(p.donations,0)+' troops donated this season':'Season donations unknown');
+    return `<section class="panel season-donations-panel"><h2>Season donations by player</h2><div class="wh-chart" data-chart-start="first"><div class="wh-chart-caption"><strong>${captured.length ? (captured.length<members.length?'≥ ':'')+number(total,0) : 'Unknown'}</strong><small>troops donated · ${members.length} current members</small></div><p class="small muted">Every current member is included, including zero donations. Hover, tap, or focus a dot for their season total. Scroll sideways to see everyone.</p><div class="season-donation-scroll" tabindex="0" role="region" aria-label="Season donations for every current member; scroll horizontally"><svg viewBox="0 0 ${width} 310" style="width:${width}px;min-width:100%" role="group" aria-label="Player names on the x axis; troops donated this season on the y axis">${[0,.5,1].map(n=>`<line x1="${L}" x2="${R}" y1="${y(max*n)}" y2="${y(max*n)}" class="wh-grid"/><text x="${L-10}" y="${y(max*n)+4}" text-anchor="end" class="wh-axis">${number(max*n,0)}</text>`).join('')}${members.map((p,i)=>`<g tabindex="0" role="button" data-wh-inspect="${id}" data-donation-tag="${esc(p.tag)}" data-wh-detail="${esc(description(p))}" aria-label="${esc(description(p))}"><circle cx="${x(i)}" cy="${y(known(p)?p.donations:0)}" r="22" class="wh-hit"/><circle cx="${x(i)}" cy="${y(known(p)?p.donations:0)}" r="5" class="wh-dot${known(p)?'':' wh-floor'}"/><text transform="translate(${x(i)},245) rotate(-40)" text-anchor="end" class="wh-axis">${esc(String(p.name || p.tag).slice(0,14))}</text></g>`).join('')}</svg></div><p id="${id}" class="wh-inspect" aria-live="polite"></p><div class="wh-chart-tooltip" role="tooltip" hidden></div><small class="wh-chart-help">Tap a dot to pin its value; tap elsewhere or press Escape to dismiss. Use arrow keys to move between players, or Home/End for the first/last player.</small><small class="muted">Last synced ${esc(date(asOf))}${captured.length<members.length?' · '+(members.length-captured.length)+' unknown counts excluded from the total':''}</small><details class="wh-data"><summary>View all ${members.length} players and season totals</summary><div class="table-scroll"><table><thead><tr><th>Player</th><th>Tag</th><th>Donated this season</th></tr></thead><tbody>${members.map(p=>`<tr><td>${esc(p.name || p.tag)}</td><td>${esc(p.tag)}</td><td>${known(p)?number(p.donations,0):'Unknown'}</td></tr>`).join('')}</tbody></table></div></details></div></section>`;
+  }
   // One keyboard stop per chart; arrow keys move within its observations.
   function chartKeys(host, selector) {
     const points = [...host.querySelectorAll(selector)];
     if (!points.length) return;
-    points.forEach((point, i) => point.setAttribute('tabindex', i === points.length - 1 ? '0' : '-1'));
+    points.forEach((point, i) => point.setAttribute('tabindex', i === (host.dataset.chartStart === 'first' ? 0 : points.length - 1) ? '0' : '-1'));
     if (host.dataset.chartKeys) return;
     host.dataset.chartKeys = '1';
     const activate = point => {
@@ -77,7 +88,7 @@ var WarHavenUI = /* @__PURE__ */ (() => {
       const current = [...host.querySelectorAll(selector)], index = current.indexOf(event.target);
       let next = event.key === 'Home' ? 0 : event.key === 'End' ? current.length - 1 : index + (['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 1);
       next = Math.max(0, Math.min(current.length - 1, next));
-      event.preventDefault();event.stopPropagation();activate(current[next]);current[next].focus();
+      event.preventDefault();event.stopPropagation();activate(current[next]);current[next].focus();current[next].scrollIntoView?.({block:'nearest',inline:'nearest'});
     });
   }
   const chartHandlers = new WeakMap();
@@ -141,14 +152,14 @@ var WarHavenUI = /* @__PURE__ */ (() => {
       if (!g || !g.count) return `<p class="small muted">${label}: ${key === "equipment" ? "no owned pieces captured" : "not available at this Town Hall"}.</p>`;
       const value = completion(g);
       return `<details class="wh-upgrade-category"><summary><span>${label}</span><b>${percent(value)}</b></summary>${meter(label, value, number(g.remainingLevels) + " levels remaining · " + number(g.maxed) + " / " + g.count + " maxed")}${g.earlierLevelsRemaining ? `<p class="wh-backlog">${g.earlierLevelsRemaining} unfinished levels are from earlier Town Halls.</p>` : ""}<div class="wh-levels">${g.items.map((i) => `<div class="wh-level"><b>${esc(i.name)}</b><span>${i.level == null ? "Unknown" : i.level} / ${i.maximum}</span><small>${i.level === i.maximum ? "Maxed for this TH" : i.level == null ? "Level needs review" : !i.unlocked ? "Not unlocked · " + i.remainingLevels + " levels left" : i.remainingLevels + " levels left"}${i.earlierLevelsRemaining ? " · " + i.earlierLevelsRemaining + " from earlier THs" : ""}</small>${i.oreRemaining ? `<small>${Object.entries(i.oreRemaining).filter(([, v]) => v).map(([k, v]) => number(v) + " " + k.replace("_", " ")).join(" · ") || "No ore remaining"}</small>` : ""}</div>`).join("")}</div>${key !== "equipment" && Number.isFinite(g.percent) ? `<p class="small muted">Current Town Hall work score: ${percent(g.percent)}. This separate score starts at 0% for the previous Town Hall maximum and subtracts unfinished earlier upgrades.</p>` : ""}</details>`;
-    }).join("")}<details class="wh-upgrade-category"><summary>Current Town Hall work and earlier upgrades</summary><p>${esc(a.explanation)}</p><p>Current Town Hall work score: <b>${percent(a.percent)}</b>. This score can be negative and is separate from the completion percentage above.</p></details>${a.issues?.length ? `<p class="notice">${a.issues.map(esc).join(" ")}</p>` : ""}`;
+    }).join("")}<details class="wh-upgrade-category"><summary><span>Town Hall upgrade details</span></summary><p>${esc(a.explanation)}</p><p>Current Town Hall work score: <b>${percent(a.percent)}</b>. This score can be negative and is separate from the completion percentage above.</p></details>${a.issues?.length ? `<p class="notice">${a.issues.map(esc).join(" ")}</p>` : ""}`;
   }
   function village(v) {
     if (!v) return '<p class="notice">Import your village data to see building, defense, trap and wall progress.</p>';
     return `<p class="small muted">Exported ${esc(date(v.exportedAt))} · Imported ${esc(date(v.importedAt))} · TH ${v.townHall}</p><div class="wh-summary-grid">${["Buildings", "Defenses", "Traps", "Walls"].map((k) => {
       const c = v.categories[k];
       return `<div class="wh-stat"><small>${k}</small><strong>${c?.known ? c.maxed + " / " + c.count : "Unknown"}</strong><small>at max for this TH${c?.known ? " · " + number(c.remainingLevels) + " upgrade levels left" : ""}</small></div>`;
-    }).join("")}</div><h3>Upgrades in progress</h3>${v.active.length ? `<div class="wh-timers">${v.active.map((i) => `<div class="item-row"><span><b>${esc(i.name)}</b><small>Level ${i.level}${i.target ? " → " + i.target : " · upgrade in progress"}</small></span><span><b data-wh-timer="${esc(i.endsAt)}"></b><small>Estimated ${esc(date(i.endsAt))}</small></span></div>`).join("")}</div>` : '<p class="small muted">No active upgrade timers were included in this export.</p>'}<p class="notice">Timers are estimates from this export. A finished countdown requires a new import to confirm the completed level.</p>${v.issues.length ? `<p class="notice">${v.issues.map(esc).join(" ")}</p>` : ""}<details class="wh-upgrade-category"><summary>All exported levels and remaining upgrades</summary><div class="table-scroll table-wrap"><table><thead><tr><th>Upgrade</th><th>Count</th><th>Level / TH max</th><th>Remaining each</th></tr></thead><tbody>${v.rows.map((r) => `<tr><td>${esc(r.name)}${r.missing ? " · Not built" : ""}</td><td>${r.count}</td><td>${r.level} / ${r.maximum ?? "Unknown"}</td><td>${r.remaining ?? "Unknown"}</td></tr>`).join("")}</tbody></table></div></details>`;
+    }).join("")}</div><h3>Upgrades in progress</h3>${v.active.length ? `<div class="wh-timers">${v.active.map((i) => `<div class="item-row"><span><b>${esc(i.name)}</b><small>Level ${i.level}${i.target ? " → " + i.target : " · upgrade in progress"}</small></span><span><b data-wh-timer="${esc(i.endsAt)}"></b><small>Estimated ${esc(date(i.endsAt))}</small></span></div>`).join("")}</div>` : '<p class="small muted">No active upgrade timers were included in this export.</p>'}<p class="notice">Timers are estimates from this export. A finished countdown requires a new import to confirm the completed level.</p>${v.issues.length ? `<p class="notice">${v.issues.map(esc).join(" ")}</p>` : ""}<details class="wh-upgrade-category"><summary><span>All exported levels and remaining upgrades</span></summary><div class="table-scroll table-wrap"><table><thead><tr><th>Upgrade</th><th>Count</th><th>Level / TH max</th><th>Remaining each</th></tr></thead><tbody>${v.rows.map((r) => `<tr><td>${esc(r.name)}${r.missing ? " · Not built" : ""}</td><td>${r.count}</td><td>${r.level} / ${r.maximum ?? "Unknown"}</td><td>${r.remaining ?? "Unknown"}</td></tr>`).join("")}</tbody></table></div></details>`;
   }
   function timers(root = document) {
     root.querySelectorAll("[data-wh-timer]").forEach((el) => {
@@ -205,5 +216,5 @@ var WarHavenUI = /* @__PURE__ */ (() => {
     }
   }
   const bell = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>';
-  return { esc, number, date, shortDate: (v) => date(v, preferences, true), apply, settingsFields, readSettings, chart, wire, chartKeys, completion, meter, army, village, timers, bell, captureDraft, restoreDraft, busyForms };
+  return { esc, number, date, shortDate: (v) => date(v, preferences, true), apply, settingsFields, readSettings, chart, seasonDonations, wire, chartKeys, completion, meter, army, village, timers, bell, captureDraft, restoreDraft, busyForms };
 })();

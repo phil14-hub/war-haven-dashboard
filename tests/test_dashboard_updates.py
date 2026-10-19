@@ -124,7 +124,7 @@ class DashboardTests(unittest.TestCase):
     self.assertEqual(result.returncode,0,result.stderr)
 
  def test_native_cards_escape_names_and_build_only_valid_clash_links(self):
-  source=(ROOT/'recruitment_dashboard.js').read_text()
+  source=(ROOT/'recruitment_contacts.js').read_text()+'\n'+(ROOT/'recruitment_dashboard.js').read_text()
   esc_source=next(line for line in tracker.HTML_TEMPLATE.splitlines() if line.startswith('const $=')).split(',esc=',1)[1]
   program="const window={},data={},esc="+esc_source+"const date=s=>s||'Unknown',WarTracker={tag:s=>String(s||'').toUpperCase()},townHallIcon=n=>'<i>'+n+'</i>',formatNumber=n=>n??'—',icon=()=>'';"+source+";const card=RecruitmentDashboard.candidate({name:'<img src=x>',tag:'javascript:alert(1)',townHallLevel:11},'new');if(card.includes('<img src=x>')||card.includes('href='))throw Error('Unsafe candidate');if(!card.includes('&lt;img'))throw Error('Escaping missing');"
   result=subprocess.run(['node','-e',program],capture_output=True,text=True)

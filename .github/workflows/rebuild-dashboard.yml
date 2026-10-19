@@ -10,6 +10,7 @@ on:
       - live_dashboard.js
       - member_accounts.js
       - recruitment_dashboard.js
+      - recruitment_contacts.js
       - recruitment_dashboard.css
       - upgrade_progress.py
       - upgrade_catalog.json

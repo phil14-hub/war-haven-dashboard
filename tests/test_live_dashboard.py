@@ -42,11 +42,12 @@ vm.runInNewContext(f.script,context);
   self.assertEqual(result.returncode,0,result.stderr)
 
  def test_portable_tracker_contains_current_client_sources(self):
-  for name,filename in [('SHARED_DASHBOARD_JS','shared_dashboard.js'),('RECRUITMENT_JS','recruitment_dashboard.js'),('LIVE_DASHBOARD_JS','live_dashboard.js')]:
+  for name,filename in [('SHARED_DASHBOARD_JS','shared_dashboard.js'),('LIVE_DASHBOARD_JS','live_dashboard.js')]:
    self.assertEqual(getattr(tracker,name),(ROOT/filename).read_text(),filename)
+  self.assertEqual(tracker.RECRUITMENT_JS,(ROOT/'recruitment_contacts.js').read_text()+'\n'+(ROOT/'recruitment_dashboard.js').read_text())
   self.assertNotIn('Load update',tracker.HTML_TEMPLATE)
   self.assertNotIn('Load latest dashboard',tracker.HTML_TEMPLATE)
   self.assertIn('refresh-turn',tracker.HTML_TEMPLATE)
-  self.assertIn('exit the browser',tracker.SHARED_DASHBOARD_JS)
+  self.assertIn('You can close this tab and it will keep running',tracker.SHARED_DASHBOARD_JS)
 
 if __name__=='__main__':unittest.main()

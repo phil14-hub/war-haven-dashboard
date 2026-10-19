@@ -11,7 +11,7 @@ const SharedDashboardSync=(()=>{
  const combine=(...parts)=>{const result=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const p of parts){result.set(p,at);at+=p.length;}return result;};
  const context=encoder.encode('WarHavenSharedEdit:v1');
  let keys=null,proof=null,proofUntil=0,loading=null,flushing=false,saveTimer=null,refreshKind='clan',refreshTimer=null;
- const requests=new Map(),completedRequests=new Set();
+ const requests=new Map(),completedRequests=new Set(),refreshRevisions=new Map();let submittingKind=null;
  let lastStatusCheck=0,needsRender=false;
  async function cryptoKeys(){
   if(keys)return keys;const raw=decode(config.encryptionKey);if(raw.length!==64)throw Error('Shared editing configuration needs to be refreshed.');
@@ -105,6 +105,13 @@ const SharedDashboardSync=(()=>{
   const label=button.querySelector('[data-refresh-label]');
   if(label)label.textContent=busy?(request.status==='pending'?'Update queued':'Refreshing…'):(kind==='clan'?'Refresh data':'Refresh recruiting candidates');
  }
+ function refreshButton(busy,accepted=false){
+  const button=$('website-update-submit');if(!button)return;
+  button.disabled=busy;button.setAttribute('aria-busy',String(busy));
+  if(busy){button.dataset.keepDisabled='1';button.innerHTML='<span class="working-spinner" aria-hidden="true"></span>Working';}
+  else{delete button.dataset.keepDisabled;button.textContent=refreshKind==='recruitment'?'Start recruitment scan':'Start clan update';}
+  const notice=$('website-update-background');if(notice)notice.hidden=!accepted;
+ }
  function snapshotContains(request,kind){
   if(!request?.startedAt)return true;
   const captured=kind==='clan'?data.lastSuccessfulSync:recruiterReport.updatedAt;
@@ -120,9 +127,9 @@ const SharedDashboardSync=(()=>{
   estimate.textContent=request.status==='partial'?'GitHub is published. Portal synchronization is pending and will retry independently.':queued?'Usually starts within 5 minutes, then about '+minutes(duration)+'. Cloud scheduling can take longer.':active?(elapsed<duration?'Estimated '+minutes(duration-elapsed)+' remaining.':'Taking longer than estimated. The update is still running.'):request.status==='completed'?'Complete. New data appears automatically while this dashboard stays open.':'Your previous dashboard is still available.';
  }
  async function refreshStatus(kind=refreshKind){
-  try{const request=(await api('/v1/refresh/status',{kind})).request;if(request)requests.set(kind,request);else requests.delete(kind);
+  const revision=refreshRevisions.get(kind)||0;try{const request=(await api('/v1/refresh/status',{kind})).request;if((refreshRevisions.get(kind)||0)!==revision||submittingKind===kind)return;if(request)requests.set(kind,request);else requests.delete(kind);
    setBusy(kind,request);
-   if(kind===refreshKind){updateProgress(request);$('website-update-submit').disabled=Boolean(request&&['pending','running'].includes(request.status));}
+   if(kind===refreshKind){updateProgress(request);const busy=Boolean(request&&['pending','running'].includes(request.status));refreshButton(busy,busy);}
    const completedKey=kind+':'+request?.id;
    if(request?.status==='completed'&&!completedRequests.has(completedKey)){
     await checkPublishedUpdate({force:true});
@@ -134,16 +141,16 @@ const SharedDashboardSync=(()=>{
   refreshKind=kind;const recruitment=kind==='recruitment';
   $('refresh-title').textContent=recruitment?'Refresh recruitment':'Update clan dashboard';
   $('shared-update-description').textContent=recruitment?'Scan tracked clans and verify recruiting candidates. This does not refresh clan wars, members or Capital data.':'Collect clan, war, member and Capital data. This does not scan recruiting candidates.';
-  $('website-update-submit').textContent=recruitment?'Start recruitment scan':'Start clan update';
-  $('website-update-error').textContent='';$('website-update-submit').disabled=false;updateProgress(requests.get(kind));
+  const saved=requests.get(kind),busy=Boolean(saved&&['pending','running'].includes(saved.status));refreshButton(busy,busy);
+  $('website-update-error').textContent='';updateProgress(saved);
   $('refresh-snapshot').textContent='Last successful '+(recruitment?'recruitment scan: '+date(recruiterReport.updatedAt):'clan snapshot: '+date(data.lastSuccessfulSync));
-  $('automated-refresh-status').textContent='After your request is accepted, you can leave or exit the browser. The update continues in the cloud.';
+  $('automated-refresh-status').textContent='';
   refreshStatus(kind);if(!$('refresh-dialog').open)$('refresh-dialog').showModal();
  }
  function wireRefresh(){
   const form=$('website-update-form');
-  form.innerHTML='<p id="shared-update-description" class="small muted"></p><p class="notice">Once your request is accepted, you can close this window, leave the page or exit the browser. The update continues in the cloud. If you keep this dashboard open, new data appears automatically without signing you out.</p><button id="website-update-submit" class="primary full-width" type="submit">Start clan update</button><div class="shared-update-meter"><div id="shared-update-label" role="status">Ready to start</div><progress id="shared-update-bar" value="0" max="100" aria-label="Estimated update progress"></progress><p id="shared-update-estimate" class="small muted"></p></div>';
-  form.onsubmit=async event=>{event.preventDefault();const kind=refreshKind;$('website-update-error').textContent='';$('website-update-submit').disabled=true;try{const result=await api('/v1/refresh/request',{kind});requests.set(kind,result.request);setBusy(kind,result.request);if(kind===refreshKind)updateProgress(result.request);}catch(error){$('website-update-error').textContent=error.message;$('website-update-submit').disabled=false;}};
+  form.innerHTML='<p id="shared-update-description" class="small muted"></p><button id="website-update-submit" class="primary full-width" type="submit">Start clan update</button><p id="website-update-background" class="notice" role="status" hidden>Your update is running in the cloud. You can close this tab and it will keep running. New data appears automatically if you keep the dashboard open.</p><div class="shared-update-meter"><div id="shared-update-label" role="status">Ready to start</div><progress id="shared-update-bar" value="0" max="100" aria-label="Estimated update progress"></progress><p id="shared-update-estimate" class="small muted"></p></div>';
+  form.onsubmit=async event=>{event.preventDefault();if(submittingKind)return;const kind=refreshKind;submittingKind=kind;refreshRevisions.set(kind,(refreshRevisions.get(kind)||0)+1);$('website-update-error').textContent='';refreshButton(true,false);try{const result=await api('/v1/refresh/request',{kind});requests.set(kind,result.request);refreshRevisions.set(kind,(refreshRevisions.get(kind)||0)+1);setBusy(kind,result.request);if(kind===refreshKind){updateProgress(result.request);const busy=['pending','running'].includes(result.request.status);refreshButton(busy,busy);}}catch(error){$('website-update-error').textContent=error.message;if(kind===refreshKind)refreshButton(false,false);}finally{submittingKind=null;}};
   $('refresh-data').onclick=()=>showRefresh('clan');$('refresh-recruiter').onclick=()=>showRefresh('recruitment');$('settings-refresh').onclick=()=>{$('settings-dialog').close();showRefresh('clan');};
   // These controls supersede the owner-token flow after the shared service is available.
   $('refresh-dialog').querySelectorAll('[data-legacy-update]').forEach(node=>node.hidden=true);

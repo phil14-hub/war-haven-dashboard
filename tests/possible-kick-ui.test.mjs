@@ -66,11 +66,14 @@ try {
   w.eval("setTab('planner')");
   assert.equal($('planner').querySelector('[data-lineup-player="#P0Q"]').disabled, false);
   w.eval("window.warHavenIndividual=true;openPlayer('#P0Q')");
+  const attendanceBefore=w.eval('JSON.stringify(edits)');
   $('review-attendance-flag').click();
-  assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').possibleKick"), false);
+  assert.equal(w.eval('JSON.stringify(edits)'),attendanceBefore);
+  assert.equal($('player-profile').querySelector('[data-profile-tab="war"]').getAttribute('aria-selected'),'true');
+  assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').possibleKick"), true);
   assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').used"), 2);
   assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').allowed"), 6);
-  assert.equal($('cards').querySelector('[data-home-card="kick"] strong').textContent, '1');
+  assert.equal($('cards').querySelector('[data-home-card="kick"] strong').textContent, '2');
   assert.deepEqual(errors, []);
   console.log('Possible-kick DOM passed: grouped counts/filter, severity order, badges in both themes, profile reason, manual planning and reviewed history.');
 } finally {
