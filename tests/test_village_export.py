@@ -6,6 +6,32 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 class VillageExportTests(unittest.TestCase):
+    def test_helper_hut_does_not_hide_known_building_progress(self):
+        program=r'''
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+vm.runInThisContext(fs.readFileSync('shared/upgrade-model.js','utf8'));
+const parser=WarHavenUpgrades.create(JSON.parse(fs.readFileSync('upgrade_catalog.json','utf8')));
+const source=JSON.parse(fs.readFileSync('tests/fixtures/th13-helper-hut-export.json','utf8'));
+const current=parser.parseVillage(source,source.tag,Date.parse('2030-01-01'));
+const withoutHut=JSON.parse(JSON.stringify(source));withoutHut.buildings=withoutHut.buildings.filter(r=>r.data!==1000093);
+const baseline=parser.parseVillage(withoutHut,source.tag,Date.parse('2030-01-01'));
+assert.deepEqual(current.categories,baseline.categories);assert.equal(current.categories.Buildings.known,true);
+assert.equal(current.categories.Buildings.knownCount,current.categories.Buildings.count);assert.equal(current.categories.Buildings.unknownCount,0);
+assert.equal(current.active.length,4);assert.ok(!current.rows.some(r=>r.id===1000093));
+const legacy=JSON.parse(JSON.stringify(current));
+legacy.rows.push({id:1000093,name:'Helper Hut',category:'Buildings',level:1,maximum:null,count:1,remaining:null});
+legacy.categories.Buildings.known=false;legacy.issues.push('Helper Hut level exceeds the catalog cap; its progress is unknown.');
+const before=JSON.stringify(legacy),fixed=parser.refreshVillage(legacy);
+assert.deepEqual(fixed.categories,current.categories);assert.deepEqual(fixed.active,legacy.active);
+assert.equal(fixed.exportedAt,legacy.exportedAt);assert.equal(fixed.importedAt,legacy.importedAt);assert.equal(JSON.stringify(legacy),before);
+assert.ok(!fixed.issues.some(s=>s.startsWith('Helper Hut ')));assert.ok(fixed.issues.some(s=>s.includes('Crafting Station')));
+const sparse=JSON.parse(JSON.stringify(source));delete sparse.buildings.find(r=>r.data===1000008).lvl;
+const partial=parser.parseVillage(sparse,source.tag,Date.parse('2030-01-01')).categories.Defenses;
+assert.equal(partial.known,false);assert.equal(partial.knownCount,46);assert.equal(partial.unknownCount,1);assert.equal(partial.count,47);
+'''
+        result=subprocess.run(['node','-e',program],cwd=ROOT,capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+
     def test_sparse_and_new_game_entries_do_not_reject_valid_buildings(self):
         program=r'''
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');

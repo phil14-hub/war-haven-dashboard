@@ -5,6 +5,20 @@ const compact=points=>{const out=[];for(const p of points||[]){if(!out.length||J
 const int=v=>Number.isInteger(v)&&v>=0;
 function create(catalog){
  const units=new Map(catalog.units.map(u=>[u.id,u])),structures=new Map([...catalog.buildings,...catalog.traps].map(u=>[u.id,u]));
+ const helpers=new Set(catalog.buildings.filter(u=>u.type==='Helper').map(u=>u.id));
+ const helperNames=catalog.buildings.filter(u=>helpers.has(u.id)).map(u=>u.name);
+ function refreshVillage(saved){
+  if(!saved||!Array.isArray(saved.rows))return saved;
+  // Helper Hut levels do not represent upgrades. Repair saved summaries as
+  // well as new imports, without changing their timestamps or active timers.
+  const rows=saved.rows.filter(r=>!r.consumed&&!helpers.has(r.id)),categories={};
+  for(const row of rows){
+   const c=categories[row.category]??={count:0,knownCount:0,unknownCount:0,maxed:0,remainingLevels:0,known:true};c.count+=row.count;
+   if(row.maximum==null||row.level===null||row.level>row.maximum){c.known=false;c.unknownCount+=row.count;}
+   else{c.knownCount+=row.count;c.maxed+=row.level===row.maximum?row.count:0;c.remainingLevels+=(row.maximum-row.level)*row.count;}
+  }
+  return {...saved,rows,categories,issues:(saved.issues||[]).filter(issue=>!helperNames.some(name=>issue.startsWith(name+' ')))};
+ }
  function parseVillage(input,expectedTag,now=Date.now()){
   const raw=typeof input==='string'?JSON.parse(input):input;
   const normalize=v=>'#'+String(v||'').trim().toUpperCase().replace(/^#/,'');
@@ -26,6 +40,7 @@ function create(catalog){
     // levelled upgrades. Do not reject an otherwise usable export for them.
     if(!u){unsupported.add(item.data);continue;}
     if(item.data===1000097&&Array.isArray(item.types)){issues.push('Crafting Station contains nested defenses; their progress is not included in the catalog totals.');continue;}
+    if(helpers.has(item.data))continue;
     if(item.cnt!==undefined&&(!int(item.cnt)||item.cnt>1000))throw Error(location+' ('+u.name+') has an invalid count. Copy a fresh complete village export.');
     const count=item.cnt??1;
     if(count===0)continue; // Explicitly empty inventory entries are not owned.
@@ -52,14 +67,9 @@ function create(catalog){
    if(missing&&!(u.type==='Trap'&&!Array.isArray(raw.traps)))rows.push({id:u.id,name:u.name,category:u.type==='Trap'?'Traps':u.id===1000010?'Walls':u.type==='Defense'?'Defenses':'Buildings',level:0,maximum:u.caps[townHall-1],count:missing,missing:true,remaining:u.caps[townHall-1]});
   }
   if(unsupported.size)issues.push('Unsupported export IDs: '+[...unsupported].join(', ')+'. Their progress is not estimated.');
-  const categories={};
-  for(const row of rows.filter(r=>!r.consumed)){
-   const c=categories[row.category]??={count:0,maxed:0,remainingLevels:0,known:true};c.count+=row.count;
-   if(row.maximum==null||row.level===null||row.level>row.maximum)c.known=false;else{c.maxed+=row.level===row.maximum?row.count:0;c.remainingLevels+=(row.maximum-row.level)*row.count;}
-  }
-  return {tag:normalize(raw.tag),townHall,exportedAt:new Date(raw.timestamp*1000).toISOString(),importedAt:new Date(now).toISOString(),catalogVersion:catalog.catalogVersion,rows:rows.filter(r=>!r.consumed),categories,active,issues};
+  return refreshVillage({tag:normalize(raw.tag),townHall,exportedAt:new Date(raw.timestamp*1000).toISOString(),importedAt:new Date(now).toISOString(),catalogVersion:catalog.catalogVersion,rows,active,issues});
  }
- return {parseVillage};
+ return {parseVillage,refreshVillage};
 }
 return {compact,create};
 });
