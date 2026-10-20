@@ -7,6 +7,8 @@ import tempfile
 import github_collector
 import github_recruiter
 import shared_actions
+import member_exports
+import snapshot_audit
 
 
 def run(env=None, tracker=None):
@@ -34,6 +36,8 @@ def collect(env, tracker, config, route, state, request):
     if candidate.get('recruiterStatus', {}).get('ok') is not True:
         raise ValueError('Recruitment scan did not finish. Existing report was retained.')
     candidate['website'] = {'protected': True, 'configured': True, 'historyStored': True}
+    view = member_exports.build_snapshot(candidate, tracker)
+    snapshot_audit.verify(candidate, tracker, view=view)
     request.progress('publishing', 75)
     with tempfile.TemporaryDirectory(prefix='war-haven-recruitment-') as folder:
         dashboard = Path(folder) / 'index.html'
@@ -41,8 +45,7 @@ def collect(env, tracker, config, route, state, request):
         request.progress('deploying', 90)
         result = tracker.publish_dashboard(config, dashboard, state=candidate, **({'wait_seconds': 180} if request.lease else {}))
         try:
-            import member_exports
-            member_exports.publish(candidate, dashboard, request.client, config['password'], tracker)
+            member_exports.publish(candidate, dashboard, request.client, config['password'], tracker, view=view)
             result['components']={'github':bool(result.get('published')),'portal':True}
             result['partial']=not bool(result.get('published'))
         except Exception:

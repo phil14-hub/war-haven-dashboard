@@ -52,7 +52,7 @@ const SharedDashboardSync=(()=>{
  }
  async function load(){
   if(loading)return loading;
-  loading=(async()=>{const result=await api('/v1/records');for(const record of result.records||[]){const clear=await decrypt(record.envelope);if(record.id!==await identifier(clear.category,clear.key))throw Error('A shared record failed identity verification.');accept(record,clear);}if(needsRender){needsRender=false;const draft=WarHavenUI.captureDraft(document.body),player=$('player-dialog')?.open?selectedTag:null;render();if(player)openPlayer(player);WarHavenUI.restoreDraft(document.body,draft);}if(!pending.size)status('Shared leadership edits are up to date.');})().finally(()=>loading=null);
+  loading=(async()=>{let cursor=null;const visited=new Set(),records=[];do{const result=await api('/v1/records',cursor?{cursor}:{});if(!Array.isArray(result.records))throw Error('Shared records could not be read completely.');records.push(...result.records);cursor=result.nextCursor||null;if(cursor&&visited.has(cursor))throw Error('Shared record pagination failed. Your draft is retained.');if(cursor)visited.add(cursor);}while(cursor);for(const record of records){const clear=await decrypt(record.envelope);if(record.id!==await identifier(clear.category,clear.key))throw Error('A shared record failed identity verification.');accept(record,clear);}if(needsRender){needsRender=false;const draft=WarHavenUI.captureDraft(document.body),player=$('player-dialog')?.open?selectedTag:null;render();if(player)openPlayer(player);WarHavenUI.restoreDraft(document.body,draft);}if(!pending.size)status('Shared leadership edits are up to date.');})().finally(()=>loading=null);
   return loading;
  }
  function changed(category,key,value){

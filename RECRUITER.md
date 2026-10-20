@@ -1,16 +1,8 @@
 # Automated War Haven recruiter
 
-The recruiter now runs on GitHub as part of **Update clan dashboard**, using the
-same approved Clash API route and the same three existing repository secrets.
-There are no additional credentials to enter. The daily scan targets **7:23 AM
-Mountain time**; manual dashboard updates also run the recruiter. Code changes to
-the collector/recruiter start a scan so the hosted version can be verified.
+Recruitment runs through **Update recruitment**, independently of clan collection. Its daily schedule targets **7:35 AM America/Denver**; clan collection targets **7:23 AM**. A manual clan update does not scan recruitment, and source changes rebuild the saved dashboard without starting duplicate scans. Both collectors use the configured API route and restore the same encrypted archive before publishing through a shared queue.
 
-Open **Manage > Recruiter** for the latest results. The report uses the same navy
-backgrounds, gold actions, cards, typography, and mobile layouts as the dashboard.
-Use **Refresh recruiting candidates** for the manual update controls. You can use
-the GitHub route or a private owner token with Actions read/write from the website.
-Your phone and Pyto can remain closed during scheduled scans.
+Open **Management → Recruiter → Refresh recruiting candidates** to request a scan using your individual leadership session. The accepted request continues with the phone/browser closed; no provider token is needed. Existing shared-passphrase access remains a compatibility route. Operations shows failures, successful updates and recruiter data freshness. GitHub scheduling may delay a queued scan.
 
 ## Search behavior
 

@@ -15,6 +15,8 @@ BACKEND_URL = 'https://portal.warhavenclan.com'
 # The service requires current dashboard-passphrase proof on every data/action request.
 ENABLED = True
 CONTEXT = b'WarHavenSharedEdit:v1'
+MACHINE_PATHS = ('/members/api/ingest', '/members/api/maintenance', '/members/api/collector-health', '/v1/refresh/claim',
+                 '/v1/refresh/progress', '/v1/refresh/finish', '/v1/refresh/reconcile')
 
 
 class SharedActionsError(Exception):
@@ -30,7 +32,7 @@ class Client:
 
     def request(self, path, payload=None, retry=True):
         try:
-            if path != '/v1/challenge' and not self.proof:
+            if path != '/v1/challenge' and path not in MACHINE_PATHS and not self.proof:
                 challenge = self.request('/v1/challenge')
                 salt = base64.b64decode(challenge['salt'], validate=True)
                 rounds = challenge['rounds']
@@ -42,7 +44,7 @@ class Client:
                        'User-Agent': 'WarHavenDashboard/1.22 (+https://github.com/phil14-hub/war-haven-dashboard)'}
             if self.proof:
                 headers['X-War-Haven-Proof'] = self.proof
-            if path in ('/members/api/ingest', '/v1/refresh/claim', '/v1/refresh/progress', '/v1/refresh/finish', '/v1/refresh/reconcile'):
+            if path in MACHINE_PATHS:
                 if not self.machine_token or time.time() > self.machine_until:
                     endpoint = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_URL', '')
                     bearer = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_TOKEN', '')
@@ -107,7 +109,19 @@ def prepare(state):
 def pull(state, client, tracker):
     if not prepare(state):
         return
-    result = client.request('/v1/records')
+    result = {'records': []}
+    cursor, visited = None, set()
+    while True:
+        page = client.request('/v1/records', {'cursor': cursor}) if cursor else client.request('/v1/records')
+        if not isinstance(page.get('records'), list):
+            raise SharedActionsError('Shared records could not be read completely. Existing edits were retained.')
+        result['records'].extend(page['records'])
+        cursor = page.get('nextCursor')
+        if not cursor:
+            break
+        if not isinstance(cursor, str) or cursor in visited:
+            raise SharedActionsError('Shared record pagination failed. Existing edits were retained.')
+        visited.add(cursor)
     edits = {k: {} for k in ('notes', 'lineupPlans', 'lineupDrafts', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions')}
     for record in result.get('records', []):
         clear = decrypt_record(record['envelope'], state['sharedActions']['encryptionKey'], tracker)

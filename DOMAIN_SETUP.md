@@ -1,8 +1,10 @@
 # War Haven custom domain
 
-The owner purchased `warhavenclan.com` on October 16, 2026. The intended main dashboard address is `https://warhavenclan.com/`, hosted by the existing `phil14-hub/war-haven-dashboard` GitHub Pages repository. Domain purchase does not activate the website or email delivery by itself.
+The owner purchased `warhavenclan.com` on October 16, 2026. The main encrypted dashboard address is `https://warhavenclan.com/`, hosted by the existing `phil14-hub/war-haven-dashboard` GitHub Pages repository. Domain purchase does not activate the website or email delivery by itself.
 
 The shared service accepts only its own origin and these dashboard origins: `https://phil14-hub.github.io`, `https://warhavenclan.com`, and `https://www.warhavenclan.com`. Current authentication, independent update queues and encrypted shared notes still apply. The member portal continues to use the existing shared-actions service.
+
+The member portal is active at [portal.warhavenclan.com/members/](https://portal.warhavenclan.com/members/), hosted separately by Sites. Preserve its CNAME and ownership verification when maintaining GitHub Pages. The steps below are reference setup instructions; do not repeat them for routine releases.
 
 ## 1. Verify ownership in GitHub
 

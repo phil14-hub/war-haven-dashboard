@@ -18,6 +18,23 @@ def count(value):
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def war_outcome(war):
+    if war.get('state') != 'warEnded' and war.get('final') is not True:
+        return None
+    recorded = {'win':'Victory','victory':'Victory','lose':'Defeat','loss':'Defeat','defeat':'Defeat','tie':'Tie','draw':'Tie'}.get(str(war.get('result', '')).lower())
+    if recorded:
+        return recorded
+    home, enemy = war.get('stars'), war.get('opponentStars')
+    if count(home) and count(enemy):
+        if home != enemy:
+            return 'Victory' if home > enemy else 'Defeat'
+        home, enemy = war.get('destruction'), war.get('opponentDestruction')
+        valid = lambda value: not isinstance(value, bool) and isinstance(value, (int, float)) and 0 <= value <= 100
+        if valid(home) and valid(enemy):
+            return 'Victory' if home > enemy else 'Defeat' if home < enemy else 'Tie'
+    return None
+
+
 def capital_evidence(history, as_of):
     samples = {}
     since, end = stamp(history.get('since')), min(as_of, stamp(history.get('leftAt')) or as_of)
@@ -102,7 +119,8 @@ def build_snapshot(state, tracker):
             own_wars.append({'id': war.get('id'), 'kind': war.get('kind'), 'opponent': (war.get('opponent') or {}).get('name', 'Opponent'),
                              'startTime': war.get('startTime'), 'endTime': war.get('endTime'), 'state': war.get('state'), 'final': final,
                              'used': used if count(used) else None, 'allowed': allowed if count(allowed) else None,
-                             'stars': participant.get('starsEarned') if count(participant.get('starsEarned')) else (0 if used == 0 else None)})
+                             'stars': participant.get('starsEarned') if count(participant.get('starsEarned')) else (0 if used == 0 else None),
+                             'outcome': war_outcome(war)})
             if not final:
                 continue
             stats['appearances'] += 1
@@ -195,9 +213,9 @@ def fetch_clan_badge(state, tracker):
         return None
 
 
-def publish(state, dashboard, client, password, tracker):
+def publish(state, dashboard, client, password, tracker, view=None):
     """Publish a small member projection and authenticated leadership bridge to R2."""
-    view = build_snapshot(state, tracker)
+    view = view if view is not None else build_snapshot(state, tracker)
     html = dashboard.read_text()
     match = re.search(r'id="protected-payload">(.*?)</script>', html, re.S)
     if not match:

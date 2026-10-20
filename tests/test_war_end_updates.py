@@ -26,7 +26,10 @@ def fixture(end=NOW, *, kind='Regular', final=False, observed=NOW):
            'state': 'warEnded' if final else 'inWar', 'endTime': timing.iso(end),
            'observedAt': timing.iso(observed), 'final': final,
            'rosterComplete': final}
-    return {'clanTag': tracker.DEFAULT_CLAN_TAG, 'wars': [war]}
+    state=tracker.new_state(tracker.DEFAULT_CLAN_TAG)
+    state.update(lastSuccessfulSync=timing.iso(observed),clanProfile={'members':1,'tag':tracker.DEFAULT_CLAN_TAG},
+                 roster=[{'tag':'#P0Y','name':'Synthetic member','role':'member','townHallLevel':13}],wars=[war])
+    return state
 
 
 class TimingTests(unittest.TestCase):
@@ -173,6 +176,9 @@ class CollectorTests(unittest.TestCase):
             now_iso=lambda: timing.iso(datetime.now(timezone.utc)),
             write_dashboard=lambda state, path, password: path.write_text('encrypted fixture'),
             publish_dashboard=publish,
+            normalize_tag=tracker.normalize_tag,league_placement=tracker.league_placement,
+            army_progress=tracker.army_progress,clan_badge_url=tracker.clan_badge_url,
+            TRACKER_JS=tracker.TRACKER_JS,
         ), published, calls
 
     def test_post_war_run_rechecks_latest_archive_and_skips_duplicate(self):

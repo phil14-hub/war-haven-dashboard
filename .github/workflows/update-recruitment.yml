@@ -2,14 +2,6 @@ name: Update recruitment
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'shared_actions.py'
-      - 'Clash_Recruitment.py'
-      - 'github_recruiter.py'
-      - 'github_recruitment_collector.py'
-      - '.github/workflows/update-recruitment.yml'
   schedule:
     - cron: '35 7 * * *'
       timezone: America/Denver
@@ -21,6 +13,7 @@ permissions:
 concurrency:
   group: war-haven-clan-update
   cancel-in-progress: false
+  queue: max
 
 jobs:
   update:
@@ -37,6 +30,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Record workflow start
+        run: python github_health.py --kind recruitment --status running
       - name: Install recruiter dependency
         run: python -m pip install --disable-pip-version-check requests==2.34.2
       - name: Refresh and publish recruitment only
@@ -48,3 +46,8 @@ jobs:
           RECRUITER_ENABLED: ${{ vars.RECRUITER_ENABLED }}
           RECRUITER_MAX_CLANS: ${{ vars.RECRUITER_MAX_CLANS }}
         run: python github_recruitment_collector.py
+      - name: Record workflow outcome
+        if: always()
+        env:
+          COLLECTOR_JOB_STATUS: ${{ job.status }}
+        run: python github_health.py --kind recruitment --status "$COLLECTOR_JOB_STATUS"

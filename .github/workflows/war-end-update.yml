@@ -34,15 +34,23 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install recruiter regression dependency
-        run: python -m pip install --disable-pip-version-check requests==2.34.2
+      - name: Record watcher start
+        run: python github_health.py --kind war-watch --status running
       - name: Test final-war timing
-        run: python -m unittest discover -s tests -v
+        env:
+          PYTHONPATH: tests:.
+        run: python -m unittest test_war_end_updates.TimingTests test_war_end_updates.GateTests -v
       - name: Check whether a recorded war needs a follow-up
         id: timing
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
         run: python github_war_check.py
+
+      - name: Record watcher outcome
+        if: always()
+        env:
+          COLLECTOR_JOB_STATUS: ${{ job.status }}
+        run: python github_health.py --kind war-watch --status "$COLLECTOR_JOB_STATUS"
 
   capture:
     needs: check
@@ -52,6 +60,7 @@ jobs:
     concurrency:
       group: war-haven-clan-update
       cancel-in-progress: false
+      queue: max
     steps:
       - name: Read the latest archive after other updates finish
         uses: actions/checkout@v4
@@ -62,6 +71,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Record final-capture start
+        run: python github_health.py --kind war-capture --status running
       - name: Install recruiter dependency for an independently requested scan
         run: python -m pip install --disable-pip-version-check requests==2.34.2
       - name: Wait until five minutes after the recorded war end
@@ -79,3 +93,9 @@ jobs:
           RECRUITER_ENABLED: ${{ vars.RECRUITER_ENABLED }}
           RECRUITER_MAX_CLANS: ${{ vars.RECRUITER_MAX_CLANS }}
         run: python github_collector.py --post-war
+
+      - name: Record final-capture outcome
+        if: always()
+        env:
+          COLLECTOR_JOB_STATUS: ${{ job.status }}
+        run: python github_health.py --kind war-capture --status "$COLLECTOR_JOB_STATUS"

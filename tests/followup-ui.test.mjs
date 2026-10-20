@@ -16,6 +16,7 @@ $('recruiter-data').textContent=JSON.stringify({updatedAt:state.lastSuccessfulSy
 let readXp=false,request=null,failContact=false;const contacts=[];
 w.fetch=async(input,options={})=>{
  const path=new URL(input,w.location.href).pathname,body=JSON.parse(options.body||'{}');let value={};
+ if(path.endsWith('/me'))value={account:{id:'fixture-leader',role:'owner'},eligible:true};
  if(path.endsWith('/preferences/clan'))value={version:1,preferences:{theme:'light'}};
  if(path.endsWith('/notifications')){if(body.id||body.all)readXp=true;value={notifications:[{id:'clan-xp:2026-10-19',action:'clan-xp',title:"Add this week's Clan XP",created_at:'2026-10-19T15:00:00Z',read_at:readXp?'2026-10-19T22:00:00Z':null}]};}
  if(path.endsWith('/recruitment-invitations')){

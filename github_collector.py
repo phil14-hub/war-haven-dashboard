@@ -8,6 +8,8 @@ from pathlib import Path
 
 from war_end_updates import next_update, record_update
 import shared_actions
+import member_exports
+import snapshot_audit
 from datetime import datetime, timezone
 
 
@@ -91,6 +93,8 @@ def collect(env, tracker, config, route, state, *, post_war, request):
     final_schedule = record_update(candidate)
     print('Automatic final-war follow-up armed from a recorded end time.'
           if final_schedule['nextUpdateAt'] else 'No pending final-war follow-up in the saved data.')
+    view = member_exports.build_snapshot(candidate, tracker)
+    snapshot_audit.verify(candidate, tracker, view=view)
     request.progress('publishing', 75)
     # Only an encrypted HTML file is written; state stays in memory.
     with tempfile.TemporaryDirectory(prefix='war-haven-') as directory:
@@ -99,8 +103,7 @@ def collect(env, tracker, config, route, state, *, post_war, request):
         request.progress('deploying', 90)
         result = tracker.publish_dashboard(config, dashboard, state=candidate, **({'wait_seconds': 180} if request.lease else {}))
         try:
-            import member_exports
-            member_exports.publish(candidate, dashboard, request.client, config['password'], tracker)
+            member_exports.publish(candidate, dashboard, request.client, config['password'], tracker, view=view)
             result['components']={'github':bool(result.get('published')),'portal':True}
             result['partial']=not bool(result.get('published'))
         except Exception:

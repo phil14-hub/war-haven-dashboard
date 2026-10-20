@@ -7,6 +7,7 @@ import github_collector
 import member_exports
 import shared_actions
 import snapshot_audit
+import argparse
 
 
 def pages_contains_publication(config, tracker, page_sha, history_sha):
@@ -63,9 +64,24 @@ def run(env=None, tracker=None):
     return result
 
 
+def maintenance(env=None):
+    env = os.environ if env is None else env
+    if env.get('GITHUB_REPOSITORY') != 'phil14-hub/war-haven-dashboard':
+        raise ValueError('Maintenance is restricted to War Haven.')
+    # Machine authorization does not depend on archive decryption or email delivery.
+    result = shared_actions.Client('').request('/members/api/maintenance')
+    print('Temporary account data and generated-publication retention checked. Archives and clan evidence are unchanged.')
+    return result
+
+
 if __name__ == '__main__':
     try:
-        run()
+        parser=argparse.ArgumentParser(description=__doc__)
+        parser.add_argument('--maintenance-only',action='store_true')
+        if parser.parse_args().maintenance_only:
+            maintenance()
+        else:
+            run()
     except Exception as error:
         print('Portal synchronization retained the previous complete publication ('+type(error).__name__+').')
         raise SystemExit(1)

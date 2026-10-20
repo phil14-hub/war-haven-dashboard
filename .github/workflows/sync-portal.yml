@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [index.html, data/war_tracker_state.enc.json, github_sync_portal.py, member_exports.py, snapshot_audit.py, shared_actions.py, .github/workflows/sync-portal.yml]
+    paths: [index.html, data/war_tracker_state.enc.json]
   schedule:
     - cron: '17,47 * * * *'
 permissions:
@@ -13,6 +13,7 @@ permissions:
 concurrency:
   group: war-haven-clan-update
   cancel-in-progress: false
+  queue: max
 jobs:
   synchronize:
     if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
@@ -29,9 +30,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Record workflow start
+        run: python github_health.py --kind portal --status running
+      - name: Clean expired temporary data independently of publication
+        run: python github_sync_portal.py --maintenance-only
       - name: Publish the saved revision without another clan collection
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
           DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python github_sync_portal.py
+      - name: Record workflow outcome
+        if: always()
+        env:
+          COLLECTOR_JOB_STATUS: ${{ job.status }}
+        run: python github_health.py --kind portal --status "$COLLECTOR_JOB_STATUS"

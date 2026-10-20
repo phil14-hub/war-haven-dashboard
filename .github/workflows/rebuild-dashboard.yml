@@ -18,30 +18,38 @@ on:
       - member_exports.py
       - snapshot_audit.py
       - .github/workflows/rebuild-dashboard.yml
+      - .github/actions/**
+      - scripts/**
+      - package.json
+      - package-lock.json
 permissions:
   contents: read
   id-token: write
 concurrency:
   group: war-haven-clan-update
   cancel-in-progress: false
+  queue: max
 jobs:
   publish-code:
     if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+      - name: Record workflow start
+        run: python github_health.py --kind code --status running
+      - name: Verify the exact release source
+        uses: ./.github/actions/check-release
       - name: Rebuild over the verified archive and publish matching projections
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
           DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
         run: python github_render_dashboard.py
+      - name: Record workflow outcome
+        if: always()
+        env:
+          COLLECTOR_JOB_STATUS: ${{ job.status }}
+        run: python github_health.py --kind code --status "$COLLECTOR_JOB_STATUS"

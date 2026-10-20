@@ -49,8 +49,8 @@ process.stdout.write(JSON.stringify({members:state.roster.length, checkedFields,
 '''
 
 
-def verify(state, tracker):
-    view = member_exports.build_snapshot(state, tracker)
+def verify(state, tracker, view=None):
+    view = view if view is not None else member_exports.build_snapshot(state, tracker)
     # Only send data used by the calculations. Leadership notes and secrets are excluded.
     projection = {key: state.get(key) for key in ('lastSuccessfulSync', 'roster', 'profiles', 'memberHistory', 'wars', 'raids')}
     projection['edits'] = {key: (state.get('edits') or {}).get(key, {}) for key in ('manualWars', 'exceptions')}

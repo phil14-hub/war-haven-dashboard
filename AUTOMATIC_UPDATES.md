@@ -8,8 +8,7 @@ The [recruiter](RECRUITER.md) has an independent **Update recruitment** workflow
 
 The [shared actions service](SHARED_ACTIONS.md), enabled for dashboard-passphrase holders, accepts independent password-authorized requests without GitHub tokens in the browser. The five-minute watcher checks each queue and recorded war ends. Running progress uses collection/publication stages plus an estimate from prior duration. It reaches 100% only on confirmed publication.
 
-**Status on installation: inactive.** Both scheduled and manual collection are
-gated by `CLAN_AUTO_UPDATES_ENABLED=true`. No credentials are embedded in code.
+Scheduled and manual collection require `CLAN_AUTO_UPDATES_ENABLED=true`. Check the repository variable and Operations panel for current status. No credentials are embedded in code.
 
 ## One-time setup
 
@@ -48,7 +47,7 @@ history. The collector also rejects a concurrent archive update without force.
 
 ## Everyday use
 
-Unlock the website and choose **Refresh data → Start clan update**. Recruitment
+Sign in with your individual leadership account and choose **Refresh data → Start clan update**. Shared-passphrase access remains a compatibility/recovery route. Recruitment
 has its own **Management → Recruiter → Refresh recruiting candidates** button.
 The shared service authorizes both through the existing unlocked session; no
 provider token is needed. Each follows its own queue and shows estimated progress.
@@ -66,8 +65,7 @@ Repository owners can still run either workflow from GitHub. Keep owner and
 provider credentials private. Set `CLAN_AUTO_UPDATES_ENABLED=false` to pause all collection.
 The source code stays public; records are encrypted before publication.
 
-Notes and lineup drafts save automatically across leaders. Other browser edits
-still require export/import before a later shared publication.
+Notes, lineup drafts, attendance exceptions, war corrections, XP checkpoints, village imports and reviewed flags save through encrypted shared records. Export/import remains a recovery and offline option.
 The workflow captures current/future observations; it cannot recreate missed
 historical wars. Local verification covers configuration, archive-first restore,
 API failures and publication conflicts. Live collection requires configured keys.
@@ -83,9 +81,7 @@ A lightweight check runs every five minutes and reads only the encrypted saved
 archive. If a known war's target is within five minutes, the capture job waits
 until that target before collecting. GitHub can delay scheduled jobs, so five
 minutes is the target rather than an exact delivery guarantee. The daily update
-continues around 7:23 AM Mountain time. The follow-up captures clan and final war
-data and retains the existing recruiter scan; daily and manual updates still run
-the recruiter.
+continues around 7:23 AM Mountain time. The follow-up captures clan and final war data and preserves the saved recruiter snapshot. Recruitment runs only through its independent schedule or a separately queued request.
 
 The capture job shares the existing collection lock, reads the latest archive
 again, and skips a war if its final update already finished. Completed checks and
@@ -120,35 +116,12 @@ and the timer counts down to the captured end time. It then shows **War ended**
 and requests a final refresh. Scores and attacks stay labeled as saved data until
 collection runs. The timer uses the device clock; it cannot discover an uncaptured war.
 
-## Leader-only password changes
+## Passwords and operations
 
-Use **Settings > Leader settings > Change shared password**. Enter the current
-dashboard password, the new password twice (at least 12 characters), and a
-fine-grained GitHub token restricted to this repository with **Contents** and
-**Secrets: read/write**. Your ordinary publishing token may need the additional
-Secrets permission. The form requires repository owner authorization; knowing the
-shared co-leader password alone does not permit a password change.
-
-The browser verifies the current password locally, reads the latest encrypted
-website and history at the same revision, re-encrypts both without changing clan
-records, updates the Actions `DASHBOARD_PASSWORD` secret, and publishes the two
-encrypted files in one commit. The token is used only for the operation and is not
-saved in browser storage or published. Passwords are encrypted before sending to
-GitHub. A conflicting publication is refused; the collector secret is restored
-when the update is confirmed not to have published.
-
-Wait for GitHub Pages to finish before loading the updated dashboard. Update any
-Pyto collector's saved password before using it again. Keep your GitHub account
-and tokens private; co-leaders need only the website URL and shared password.
-GitHub ownership remains the recovery route: restore a matching older encrypted
-website and archive together using a password you still know. Password changes
-protect future publications; copies or Git revisions already unlocked with an
-older password cannot be revoked.
-
-The bundled libsodium.js 0.8.4 encrypts the Actions secret using GitHub's public
-key. Its ISC license is included in the collector and encrypted dashboard. It
-loads locally for a password change; no external script host receives credentials.
+See [Setup, passwords and recovery](SETUP.md) for the coordinated shared-password change, personal account recovery and emergency owner recovery. Operations shows workflow successes/failures, pending/running requests, stuck leases, data capture times and maintenance. SMS alerts are disabled.
 
 ## Portal publication retry
 
 `sync-portal.yml` runs after encrypted dashboard/archive pushes, on demand, and twice hourly. It restores the same main-branch revision without another Clash collection and publishes matching member/leader projections. Local/Pyto publications use this path. Collector workflows require `id-token: write` for scoped portal authorization; publishing/API secrets remain in Actions. A successful GitHub publication with a failed portal upload is reported as partial, preserving the prior complete portal snapshot until retry.
+
+Portal retry first removes expired sessions, tokens, rate limits, MFA challenges and email-change requests independently of archive decoding. Identical publications reuse their generation. Generated delivery objects older than seven days may be removed, preserving the current and previous generations. Archives, war evidence and encrypted shared records are retained. Source changes run the release gate and rebuild saved history; they do not also start redundant clan and recruitment scans.

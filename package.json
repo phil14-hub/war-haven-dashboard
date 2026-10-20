@@ -5,6 +5,7 @@
     "jsdom": "26.1.0"
   },
   "scripts": {
-    "test:ui": "node tests/leadership-ui.test.mjs && node tests/leadership-experience.test.mjs && node tests/possible-kick-ui.test.mjs && node tests/donation-ui.test.mjs && node tests/followup-ui.test.mjs && node tests/achievements-and-charts.test.mjs"
+    "test:ui": "node scripts/test-ui.mjs",
+    "sync:embedded": "python scripts/sync_embedded_assets.py"
   }
 }
