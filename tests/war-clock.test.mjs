@@ -18,8 +18,14 @@ try{
  assert.equal(value(),'00:38:00','Thirty-minute device skew must not shorten the timer');
  elapsed+=1000;deviceOffset=-120*60000;w.eval('tickWarClocks()');assert.equal(value(),'00:37:59','Device clock changes must not change a running countdown');
  failTime=true;assert.equal(await w.WarHavenUI.syncClock(),false);elapsed+=1000;w.eval('tickWarClocks()');assert.equal(value(),'00:37:58','Offline sync keeps the last server anchor');
- elapsed=38*60000;const unchanged=w.eval('JSON.stringify(data.wars)');w.eval('tickWarClocks()');assert.equal(phase(),'Awaiting war update');assert.equal(value(),'—');assert.match(w.document.querySelector('[data-clock-date]').textContent,/in-game timer/);assert.equal(w.WarTracker.isClosed(war,base+elapsed),false);assert.equal(w.eval('JSON.stringify(data.wars)'),unchanged);
+ elapsed=38*60000;const unchanged=w.eval('JSON.stringify(data.wars)');w.eval('tickWarClocks()');assert.equal(phase(),'Awaiting war update');assert.equal(value(),'—');assert.match(w.document.querySelector('[data-clock-date]').textContent,/in-game timer/);assert.equal(w.WarTracker.isClosed(war,base+elapsed),true);assert.equal(w.eval('JSON.stringify(data.wars)'),unchanged);
  w.eval('data.wars[0].endTime='+JSON.stringify(new Date(base+elapsed+30*60000).toISOString())+';renderCurrent();tickWarClocks()');assert.equal(value(),'00:30:00');assert.equal(phase(),'In progress');
+ // Old provisional captures must still break attendance streaks and stay out
+ // of the current-war list after the six-hour final-capture retry window.
+ const old={...war,id:'old-incomplete',startTime:new Date(base-2*86400000).toISOString(),endTime:new Date(base-86400000).toISOString()};
+ const row=w.WarTracker.playersFor({wars:[old],roster:[{tag:'#P0Q',name:'Late attacker'}],policyStart:new Date(base-3*86400000).toISOString()}, {}, base)[0];
+ assert.equal(row.uncertain,true);assert.equal(row.played,0);assert.equal(row.kick,false);assert.deepEqual(Array.from(row.gaps),['old-incomplete']);
+ w.eval('data.wars.push('+JSON.stringify(old)+');renderCurrent();tickWarClocks()');assert.equal(w.document.querySelectorAll('[data-war-clock]').length,1);
  assert.equal(w.WarTracker.warTiming({...war,state:'warEnded'},base).label,'War ended');
  assert.equal(w.WarTracker.warTiming({...war,final:true},base).label,'War ended');
  assert.deepEqual(errors,[]);
