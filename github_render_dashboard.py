@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import tempfile
 import github_collector
+import github_recruiter
 import member_exports
 import shared_actions
 import snapshot_audit
@@ -17,6 +18,7 @@ def run(env=None, tracker=None):
     state=tracker.new_state(tracker.DEFAULT_CLAN_TAG)
     if not tracker.pull_github_history(state,config):
         raise ValueError('Verified existing history is required. No empty release was published.')
+    github_recruiter.rebuild_report(state)
     client=shared_actions.Client(config['password'])
     if shared_actions.ENABLED:
         shared_actions.pull(state,client,tracker)

@@ -23,6 +23,30 @@ def load_recruiter():
     return module
 
 
+def rebuild_report(state, *, module=None):
+    """Recover all recent cards from retained records without another API scan."""
+    saved = state.get('recruiter') or {}
+    files = saved.get('files') or {}
+    store = files.get('detected_leavers.json') or {}
+    stats = files.get('last_run_stats.json') or {}
+    report = saved.get('report') or {}
+    filters = stats.get('filters') or report.get('filters')
+    if not isinstance(store.get('players'), dict) or not isinstance(filters, dict):
+        return
+    module = module or load_recruiter()
+    groups = module.build_result_groups(store, filters, 7, 7, 50, stats.get('runId'))
+    counts = {'newCandidatesShown': len(groups['new']), 'stillAvailableShown': len(groups['still']),
+              'joinedMyClanCurrent': len(groups['joined_my'])}
+    saved['report'] = {**report, 'groups': {key: [module.clean_row(row) for row in groups[key]]
+                      for key in ('new', 'still', 'joined_my', 'no_longer')},
+                       'stats': {**stats, **counts}}
+    # Preserve the actual scan timestamp and every full archived player record.
+    saved['summary'] = {**saved.get('summary', {}), 'newCandidates': counts['newCandidatesShown'],
+                        'availableCandidates': counts['newCandidatesShown'] + counts['stillAvailableShown'],
+                        'joinedClan': counts['joinedMyClanCurrent']}
+    state['recruiterSummary'] = copy.deepcopy(saved['summary'])
+
+
 def scan(previous, token, api_root, clan_tag, *, module=None, max_clans=1000):
     """Do not alter the caller's saved state unless a complete scan succeeds."""
     if not token or api_root not in ('https://api.clashofclans.com/v1', 'https://cocproxy.royaleapi.dev/v1'):

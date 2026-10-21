@@ -1928,6 +1928,11 @@ def build_result_groups(leaver_store, filters, active_days, history_display_days
         detected = row["_detectedDt"]
         lifecycle = row["lifecycle"]
 
+        # Card age is the departure detection, not a daily verification or
+        # status change. Keep older records in the archive, off the card list.
+        if detected < active_cutoff:
+            continue
+
         if detected >= active_cutoff and lifecycle in (LIFECYCLE_NEW, LIFECYCLE_STILL) and meets_filters(rec, filters):
             # "NEW THIS SCAN" is literal: only departures detected by this
             # current run belong there. An older candidate that was not shown
@@ -1971,18 +1976,16 @@ def build_result_groups(leaver_store, filters, active_days, history_display_days
         reverse=True,
     )
 
-    # Target applies to currently recruitable candidates, with brand-new first.
+    # The scan target never evicts yesterday's cards. All candidates from the
+    # rolling active window remain in the report; invitations are tracked by
+    # the shared leadership service and filtered in the dashboard.
     active_combined = new_rows + still_rows
-    visible_active = active_combined[:target]
-    visible_tags = {r["tag"] for r in visible_active}
-    visible_new = [r for r in new_rows if r["tag"] in visible_tags]
-    visible_still = [r for r in still_rows if r["tag"] in visible_tags]
 
     return {
-        "new": visible_new,
-        "still": visible_still,
-        "joined_my": joined_my[:max(50, target)],
-        "no_longer": no_longer[:max(50, target)],
+        "new": new_rows,
+        "still": still_rows,
+        "joined_my": joined_my,
+        "no_longer": no_longer,
         "active_all_count": len(active_combined),
         "new_all_count": len(new_rows),
         "still_all_count": len(still_rows),

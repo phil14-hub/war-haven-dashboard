@@ -187,3 +187,13 @@ html[data-theme=light] .hub-nav button[aria-current=page]{background:var(--selec
 .wh-notifications [hidden]{display:none!important}
 
 .wh-operations-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:16px}#operations details{padding:14px 0;border-top:1px solid var(--line)}#operations summary{cursor:pointer;font-weight:700}.attendance-evidence-highlight{outline:3px solid var(--gold);outline-offset:3px;scroll-margin-top:24px}.attendance-evidence button{white-space:normal;text-align:left}.lineup-player>button.lineup-warning{grid-column:1/-1;text-align:left;white-space:normal;border:1px solid var(--warning-line);background:var(--warning-bg);color:var(--amber);min-height:44px}
+
+/* Keep names, tags and the completion figure legible in narrow member cards. */
+.upgrade-members{align-items:stretch}
+.upgrade-member{display:flex;flex-direction:column;min-width:0;text-align:left}
+.upgrade-member-top{display:grid;grid-template-columns:42px minmax(0,1fr);gap:12px;align-items:center;width:100%}
+.upgrade-member-top>span:nth-child(2){min-width:0;overflow-wrap:anywhere}
+.upgrade-member-top .upgrade-big{grid-column:1/-1;display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 12px;text-align:left;font-size:28px;line-height:1.25;min-width:0}
+.upgrade-member-top .upgrade-big small{font-size:12px;white-space:normal;font-weight:400;color:var(--muted)}
+.upgrade-member .upgrade-card-link{margin-top:auto;padding-top:12px}
+.upgrade-member .wh-meter{width:100%}

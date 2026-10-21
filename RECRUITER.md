@@ -6,7 +6,9 @@ Open **Management → Recruiter → Refresh recruiting candidates** to request a
 
 ## Search behavior
 
-- Target up to 50 active candidates with Town Hall 11 or higher.
+- Find candidates with Town Hall 11 or higher; the scan target does not cap the saved card list.
+- Retain all detected players for seven days across daily scans, deduplicated by player tag. Daily verification does not restart that clock.
+- After returning from Clash, **Yes** saves the invitation and removes the card for every leader. **No** keeps it available until expiry. Failed saves keep the card and offer a retry.
 - Monitor up to 1,000 clans whose game location is United States, keeping the
   existing core/rotating pool, verification, duplicate cooldown and lifecycle.
 - Verify a departed player's live profile before listing them as clanless.
@@ -30,6 +32,8 @@ encrypted with the existing dashboard password and published atomically with the
 website. Password changes therefore cover recruiting history too. The website
 receives the report and summary; the large monitored-roster baseline stays out
 of its browser payload.
+
+Expired and invited cards leave the active list; full archived player records and shared invitation responses remain saved. Invitation history is loaded before cards appear and refreshed while the recruiter is open. Saved profiles also rebuild army completion during archive restore and code-only publication, retaining their actual observation timestamps.
 
 A failed clan request retains the last successful roster for that clan. If the
 recruiter run cannot finish, its last good report/history remain intact while the

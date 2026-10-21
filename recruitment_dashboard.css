@@ -2,3 +2,9 @@
 @media(min-width:1250px){.recruit-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.recruit-filters .growth-controls{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:640px){.recruit-grid{grid-template-columns:minmax(0,1fr)}.recruit-filters .growth-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.recruit-card{padding:18px}.recruit-summary-actions button{width:100%}.recruit-metrics strong{font-size:20px}.recruit-identity h3{font-size:17px}}
 @media(prefers-reduced-motion:reduce){.recruit-card{transition:none;transform:none;opacity:1}.recruit-scroll-pending{transform:none;opacity:1}}
+.recruit-contact-controls{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;margin:12px 0}
+.recruit-contact-controls p{margin:0;flex:1 1 240px;overflow-wrap:anywhere}
+.recruit-contact-controls button{min-height:44px;white-space:normal}
+.recruit-identity>div{min-width:0;overflow-wrap:anywhere}
+#recruit-invite-dialog{width:min(480px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:80dvh;overflow:auto;box-sizing:border-box;overflow-wrap:anywhere}
+@media(max-width:360px){.recruit-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.recruit-identity{flex-wrap:wrap}}
