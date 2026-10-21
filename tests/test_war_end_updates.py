@@ -39,6 +39,66 @@ class TimingTests(unittest.TestCase):
         schedule = timing.record_update(state, NOW)
         self.assertEqual(schedule['nextUpdateAt'], timing.iso(NOW + timedelta(hours=20, minutes=5)))
 
+    def test_revised_api_deadline_rearms_even_a_completed_or_expired_watch(self):
+        for settled in ({}, {'completedAt': timing.iso(NOW)}, {'expiredAt': timing.iso(NOW)}):
+            state = fixture()
+            timing.record_update(state, NOW + timedelta(minutes=5))
+            watch = state['automaticUpdates']['postWar']['watches']['Regular:fixture']
+            watch.update(settled)
+            state['wars'][0]['endTime'] = timing.iso(NOW + timedelta(minutes=38))
+            schedule = timing.record_update(state, NOW + timedelta(minutes=10))
+            updated = schedule['watches']['Regular:fixture']
+            self.assertEqual(schedule['nextUpdateAt'], timing.iso(NOW + timedelta(minutes=43)))
+            for field in ('completedAt', 'expiredAt', 'lastAttemptAt'):
+                self.assertNotIn(field, updated)
+
+    def test_revised_regular_deadline_preserves_identity_and_saved_references(self):
+        state = fixture()
+        original = state['wars'][0]
+        original.update(kind='Regular', preparationStartTime=timing.iso(NOW-timedelta(days=2)),
+                        opponent={'tag':'#P0Y'}, participants=[], attacksPerMember=2)
+        state['edits']['exceptions'] = {original['id']+'::#P0Q': {'value':True}}
+        state['wars'].append({**original, 'id':'duplicate-with-revised-time',
+                              'endTime':timing.iso(NOW+timedelta(minutes=38))})
+        revised = {**original, 'id':'new-end-based-id', 'endTime':timing.iso(NOW+timedelta(minutes=38))}
+        tracker.store_war(state, revised)
+        self.assertEqual(len(state['wars']), 1)
+        self.assertEqual(state['wars'][0]['id'], original['id'])
+        self.assertEqual(state['wars'][0]['endTime'], revised['endTime'])
+        self.assertIn(original['id']+'::#P0Q', state['edits']['exceptions'])
+        tracker.add_summaries(state, {'items':[{'endTime':revised['endTime'], 'attacksPerMember':2,
+            'opponent':{'tag':'#P0Y'}, 'clan':{'expEarned':150}}]})
+        self.assertEqual(len(state['wars']), 1)
+        self.assertEqual(state['wars'][0]['expEarned'], 150)
+
+    def test_elapsed_deadline_does_not_finalize_or_lose_late_attacks(self):
+        clan = tracker.DEFAULT_CLAN_TAG
+        raw = {'state':'inWar', 'endTime':timing.iso(NOW-timedelta(minutes=30)),
+               'preparationStartTime':timing.iso(NOW-timedelta(days=2)), 'attacksPerMember':2,
+               'teamSize':1, 'clan':{'tag':clan, 'attacks':0,
+                   'members':[{'tag':'#P0Q','name':'Late attacker'}]}, 'opponent':{'tag':'#P0Y'}}
+        state = tracker.new_state(clan)
+        tracker.store_war(state, tracker.normalize_war(raw, clan))
+        self.assertFalse(state['wars'][0]['final'])
+        raw['state'] = 'warEnded'
+        raw['endTime'] = timing.iso(NOW+timedelta(minutes=8))
+        raw['clan']['attacks'] = 1
+        raw['clan']['members'][0]['attacks'] = [{'stars':3,'destructionPercentage':100,'order':1}]
+        tracker.store_war(state, tracker.normalize_war(raw, clan))
+        self.assertEqual(len(state['wars']), 1)
+        final = state['wars'][0]
+        self.assertTrue(final['final'])
+        self.assertEqual(final['participants'][0]['attacksUsed'], 1)
+        self.assertEqual(final['participants'][0]['starsEarned'], 3)
+
+    def test_successive_friendly_wars_are_not_merged_by_opponent(self):
+        state = fixture(kind='Friendly')
+        original = state['wars'][0]
+        original.update(preparationStartTime=timing.iso(NOW-timedelta(hours=2)), opponent={'tag':'#P0Y'})
+        tracker.store_war(state, {**original, 'id':'next-friendly',
+            'preparationStartTime':timing.iso(NOW), 'endTime':timing.iso(NOW+timedelta(hours=2))})
+        self.assertEqual(len(state['wars']), 2)
+
     def test_no_war_no_target(self):
         self.assertIsNone(timing.next_update({'wars': []}, NOW))
 
