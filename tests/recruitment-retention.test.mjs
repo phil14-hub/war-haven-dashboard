@@ -39,9 +39,11 @@ try{
  const {w,$}=a;
  await wait(()=>$('recruit-contact-status').textContent.includes('could not load'));
  assert.equal($('recruitment-results').querySelectorAll('.recruit-card').length,0,'Do not flash already invited cards before shared history loads');
- failReads=false;$('recruit-history-retry').click();await wait(()=>$('recruitment-results').querySelectorAll('.recruit-card').length===205);
+ failReads=false;$('recruit-history-retry').click();await wait(()=>$('recruitment-results').querySelectorAll('.recruit-card').length===60);
  assert.ok(readBatches.length>=4);assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(0)+'"]'),null);
  assert.match($('recruitment-count').textContent,/205 matching players/);
+ $('recruitment-results').querySelector('[data-recruit-more=still]').click();assert.equal($('recruitment-results').querySelectorAll('.recruit-card').length,120);
+ $('recruit-search').value='Recruit 204';$('recruit-search').dispatchEvent(new w.Event('input'));assert.match($('recruitment-results').textContent,/Recruit 204/);$('recruit-reset').click();
  const visit=async i=>{const link=$('recruitment-results').querySelector('[data-recruit-open="'+tag(i)+'"]');assert.ok(link);link.addEventListener('click',e=>e.preventDefault(),{once:true});link.click();w.dispatchEvent(new w.Event('blur'));w.dispatchEvent(new w.Event('focus'));await wait(()=>$('recruit-invite-dialog')?.open);};
  await visit(1);$('recruit-invite-no').click();await wait(()=>!$('recruit-invite-dialog'));assert.ok($('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'));
  await visit(1);failSaves=true;$('recruit-invite-yes').click();await wait(()=>$('recruit-invite-status')?.textContent.includes('Could not save'));assert.ok($('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'),'A failed Yes keeps the card');

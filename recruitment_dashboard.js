@@ -1,7 +1,7 @@
 const RecruitmentDashboard=(()=>{
  const sections=[['new','New this scan'],['still','Still available'],['joined_my','Joined War Haven'],['no_longer','No longer available']];
  const labels={NEW:'New this scan',STILL_CLANLESS:'Still clanless',JOINED_MY_CLAN:'Joined War Haven',JOINED_OTHER_CLAN:'Joined another clan',BELOW_FILTERS:'Outside filters',ARCHIVED:'Archived',COOLDOWN_CLANLESS:'Duplicate cooldown',VERIFY_ERROR:'Needs verification'};
- let model=null,observer=null,filters={search:'',section:'all',hall:0,stars:0,league:0,sort:'newest'};
+ let model=null,observer=null,limits={},filters={search:'',section:'all',hall:0,stars:0,league:0,sort:'newest'};
  const recent=row=>Number.isFinite(Date.parse(row.detectedAt))&&Date.parse(row.detectedAt)>=Date.now()-7*86400000;
  const visible=row=>recent(row)&&RecruitmentContacts.ready(WarTracker.tag(row.tag))&&!RecruitmentContacts.invited(WarTracker.tag(row.tag));
  function normalize(report){
@@ -53,10 +53,11 @@ const RecruitmentDashboard=(()=>{
   const counts=Object.fromEntries(sections.map(([key])=>[key,(model.groups[key]||[]).filter(visible).length]));
   $('recruit-summary-cards').innerHTML=miniCards([['Available',counts.new+counts.still,'recruit'],['New this scan',counts.new,'stars'],['Joined our clan',counts.joined_my,'users'],['Ever joined',model.stats?.everJoinedMyClanCount??counts.joined_my,'check']]);
   $('recruitment-results').innerHTML=sections.filter(([key])=>filters.section==='all'||filters.section===key).map(([key,label])=>{
-   const shown=(model.groups[key]||[]).filter(row=>visible(row)&&matches(row,key)).sort(compare);total+=shown.length;
-   const content=`<div class="recruit-grid">${shown.map(row=>candidate(row,key)).join('')||'<p class="small muted recruit-empty">No candidates match these filters.</p>'}</div>`;
-   return ['joined_my','no_longer'].includes(key)?`<details class="recruit-section" ${filters.section===key?'open':''}><summary>${label}<span class="pill">${shown.length}</span></summary>${content}</details>`:`<section class="recruit-section"><div class="section-heading"><h2>${label}</h2><span class="pill">${shown.length}</span></div>${content}</section>`;
+   const matched=(model.groups[key]||[]).filter(row=>visible(row)&&matches(row,key)).sort(compare),shown=matched.slice(0,limits[key]||60);total+=matched.length;
+   const content=`<div class="recruit-grid">${shown.map(row=>candidate(row,key)).join('')||'<p class="small muted recruit-empty">No candidates match these filters.</p>'}</div>${shown.length<matched.length?`<div class="recruit-more"><p class="small muted">Showing ${shown.length} of ${matched.length} players. Search and filters include the full list.</p><button data-recruit-more="${key}">Show next ${Math.min(60,matched.length-shown.length)} players</button></div>`:''}`;
+   return ['joined_my','no_longer'].includes(key)?`<details class="recruit-section" ${filters.section===key?'open':''}><summary>${label}<span class="pill">${matched.length}</span></summary>${content}</details>`:`<section class="recruit-section"><div class="section-heading"><h2>${label}</h2><span class="pill">${matched.length}</span></div>${content}</section>`;
   }).join('');
+  $('recruitment-results').querySelectorAll('[data-recruit-more]').forEach(button=>button.onclick=()=>{const key=button.dataset.recruitMore;limits[key]=(limits[key]||60)+60;renderResults();});
   $('recruitment-count').textContent=total+' matching player'+(total===1?'':'s')+(pending?' · Checking invitation history for '+pending+' players…':'');RecruitmentContacts.wire($('recruitment-results'));reveal();
  }
  function turnover(){

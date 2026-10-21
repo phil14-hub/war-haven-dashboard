@@ -7,7 +7,7 @@ Open **Management → Recruiter → Refresh recruiting candidates** to request a
 ## Search behavior
 
 - Find candidates with Town Hall 11 or higher; the scan target does not cap the saved card list.
-- Retain all detected players for seven days across daily scans, deduplicated by player tag. Daily verification does not restart that clock.
+- Retain all detected players for seven days across daily scans, deduplicated by player tag. Daily verification does not restart that clock. Large sections display 60 cards at a time with **Show next players**; search, filters and counts include the full retained list.
 - After returning from Clash, **Yes** saves the invitation and removes the card for every leader. **No** keeps it available until expiry. Failed saves keep the card and offer a retry.
 - Monitor up to 1,000 clans whose game location is United States, keeping the
   existing core/rotating pool, verification, duplicate cooldown and lifecycle.
