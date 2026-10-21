@@ -15,6 +15,21 @@ from tests.test_upgrade_progress import profile
 
 
 class RestoredProgressTests(unittest.TestCase):
+    def test_native_report_does_not_duplicate_legacy_card_html(self):
+        saved = tracker.new_state('#P0Y')
+        report = {'html': '<!doctype html><h1>Legacy report</h1>', 'version': 1,
+                  'updatedAt': '2030-01-01T00:00:00Z',
+                  'groups': {'new': [{'tag': '#P0Q'}], 'still': [], 'joined_my': [], 'no_longer': []}}
+        saved['recruiter'] = {'report': copy.deepcopy(report)}
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / 'dashboard.html'
+            tracker.write_dashboard(saved, target)
+            content = target.read_text()
+        browser = json.loads(re.search(r'id="recruiter-data" type="application/json">(.*?)</script>', content).group(1))
+        self.assertNotIn('html', browser)
+        self.assertEqual(browser['groups'], report['groups'])
+        self.assertEqual(saved['recruiter']['report'], report)
+
     def test_archive_restore_rebuilds_army_without_api_or_fresh_timestamp(self):
         saved = tracker.new_state('#P0Y')
         saved['profiles'] = {'#P0Q': profile(18), '#P0R': profile(14, 13)}
