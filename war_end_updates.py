@@ -42,6 +42,10 @@ def plan(state, now=None):
             continue
         due = ended + DELAY
         watch = watches.setdefault(war['id'], {'endTime': iso(ended), 'dueAt': iso(due)})
+        # Clash may revise a deadline. Follow the fresh API time instead of
+        # keeping the initial target forever, including a previously expired one.
+        if timestamp(watch.get('endTime')) != ended:
+            watch = watches[war['id']] = {'endTime': iso(ended), 'dueAt': iso(due)}
         # A manual/daily scan after the target already satisfies the final check.
         observed = timestamp(war.get('observedAt'))
         if war.get('final') and observed and observed >= due:

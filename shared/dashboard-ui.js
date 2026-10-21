@@ -1,6 +1,32 @@
 var WarHavenUI = /* @__PURE__ */ (() => {
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   let preferences = {};
+  // Anchor countdowns to server time, then advance with the monotonic clock.
+  // This also survives changes to the device's date/time while the page is open.
+  let serverClock = null, clockRequest = null;
+  const now = () => serverClock ? serverClock.time + performance.now() - serverClock.at : Date.now();
+  function syncClock() {
+    if (clockRequest) return clockRequest;
+    clockRequest = (async () => {
+      try {
+        const started = performance.now();
+        const response = await fetch('/members/api/time', {cache:'no-store', credentials:'same-origin', signal:AbortSignal.timeout(5000)});
+        if (!response.ok) return false;
+        const value = await response.json(), ended = performance.now(), time = Date.parse(value.serverNow);
+        if (!Number.isFinite(time) || ended - started > 5000) return false;
+        serverClock = {time:time + (ended - started) / 2, at:ended};
+        return true;
+      } catch { return false; }
+      finally { clockRequest = null; }
+    })();
+    return clockRequest;
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', syncClock);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) syncClock(); });
+    window.setInterval(syncClock, 300000);
+    syncClock();
+  }
   const number = (v, digits = 2) => Number.isFinite(v) ? v.toLocaleString(void 0, { maximumFractionDigits: digits }) : "Unknown";
   function locale(p) {
     return { mdy: "en-US", dmy: "en-GB", iso: "en-CA" }[p.dateFormat];
@@ -217,5 +243,5 @@ var WarHavenUI = /* @__PURE__ */ (() => {
     }
   }
   const bell = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>';
-  return { esc, number, date, shortDate: (v) => date(v, preferences, true), apply, settingsFields, readSettings, chart, seasonDonations, wire, chartKeys, completion, meter, army, village, timers, bell, captureDraft, restoreDraft, busyForms };
+  return { now, syncClock, esc, number, date, shortDate: (v) => date(v, preferences, true), apply, settingsFields, readSettings, chart, seasonDonations, wire, chartKeys, completion, meter, army, village, timers, bell, captureDraft, restoreDraft, busyForms };
 })();
