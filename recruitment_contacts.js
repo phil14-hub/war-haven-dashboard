@@ -1,9 +1,20 @@
 const RecruitmentContacts=(()=>{
- const history=new Map(),invitedTags=new Set(),loaded=new Map(),cacheKey='war-haven-recruit-visits:'+data.clanTag;
- let pending=[],started=false,dialog=null,saving=false,rerender=()=>{},loading=null,watched=[];
+ const history=new Map(),invitedTags=new Set(),loaded=new Map(),dismissedCards=new Map(),cacheKey='war-haven-recruit-visits:'+data.clanTag,dismissKey='war-haven-recruit-dismissals:'+data.clanTag;
+ let pending=[],started=false,dialog=null,saving=false,rerender=()=>{},loading=null,watched=[],dismissalsReady=false;
  const persist=()=>LeaderCache.set(cacheKey,pending);
  const valid=p=>p&&typeof p.id==='string'&&/^#[0289PYLQGRJCUV]{3,20}$/.test(p.tag)&&Number.isFinite(Date.parse(p.openedAt));
- const invited=tag=>invitedTags.has(tag),ready=tag=>loaded.has(tag)||invited(tag);
+ const dismissalId=(tag,detectedAt)=>JSON.stringify([tag,detectedAt]);
+ const validDismissal=row=>row&&/^#[0289PYLQGRJCUV]{3,20}$/.test(row.tag)&&typeof row.detectedAt==='string'&&Number.isFinite(Date.parse(row.detectedAt))&&Date.parse(row.detectedAt)>=Date.now()-7*86400000;
+ const dismissed=(tag,detectedAt)=>dismissedCards.has(dismissalId(tag,detectedAt));
+ function dismiss(tag,detectedAt){
+  const row={tag:WarTracker.tag(tag),detectedAt};
+  if(!validDismissal(row))return false;
+  dismissedCards.set(dismissalId(row.tag,row.detectedAt),row);
+  LeaderCache.set(dismissKey,[...dismissedCards.values()].filter(validDismissal));
+  rerender();
+  return true;
+ }
+ const invited=tag=>invitedTags.has(tag),ready=tag=>dismissalsReady&&(loaded.has(tag)||invited(tag));
  function remember(contact){
   const rows=history.get(contact.player_tag)||[];
   if(contact.invited)invitedTags.add(contact.player_tag);
@@ -38,9 +49,19 @@ const RecruitmentContacts=(()=>{
   document.addEventListener('visibilitychange',()=>document.hidden?away():returned());
   // Expire cards on an open page and receive invitations saved by other leaders.
   setInterval(()=>{if(!document.hidden&&document.body.dataset.page==='recruiter'){rerender();void load(watched);}},60000);
-  LeaderCache.ready().then(()=>{const saved=LeaderCache.get(cacheKey);if(Array.isArray(saved)){for(const p of saved.filter(valid))if(!pending.some(v=>v.id===p.id))pending.push({...p,away:true});}show();});
+  LeaderCache.ready().then(()=>{
+   const saved=LeaderCache.get(cacheKey);
+   if(Array.isArray(saved)){for(const p of saved.filter(valid))if(!pending.some(v=>v.id===p.id))pending.push({...p,away:true});}
+   const removed=LeaderCache.get(dismissKey);
+   if(Array.isArray(removed)){
+    for(const row of removed.filter(validDismissal))dismissedCards.set(dismissalId(row.tag,row.detectedAt),row);
+    if(removed.length!==dismissedCards.size)LeaderCache.set(dismissKey,[...dismissedCards.values()]);
+   }
+   dismissalsReady=true;rerender();show();
+  });
  }
  function wire(root){
+  root.querySelectorAll('[data-recruit-dismiss]').forEach(button=>button.onclick=()=>{if(dismiss(button.dataset.recruitDismiss,button.dataset.recruitDetected))toast('Player removed from the recruiter on this browser.');});
   root.querySelectorAll('[data-recruit-open]').forEach(a=>a.onclick=()=>{
    const visit={id:crypto.randomUUID(),tag:a.dataset.recruitOpen,name:a.dataset.recruitName||a.dataset.recruitOpen,openedAt:new Date().toISOString(),away:false};
    if(valid(visit)){pending.push(visit);persist();}
@@ -65,5 +86,5 @@ const RecruitmentContacts=(()=>{
   })();
   try{await loading;}finally{loading=null;}
  }
- return {start,wire,load,status,invited,ready};
+ return {start,wire,load,status,invited,ready,dismissed};
 })();

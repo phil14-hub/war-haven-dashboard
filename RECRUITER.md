@@ -9,6 +9,7 @@ Open **Management → Recruiter → Refresh recruiting candidates** to request a
 - Find candidates with Town Hall 11 or higher; the scan target does not cap the saved card list.
 - Retain all detected players for seven days across daily scans, deduplicated by player tag. Daily verification does not restart that clock. Large sections display 60 cards at a time with **Show next players**; search, filters and counts include the full retained list.
 - After returning from Clash, **Yes** saves the invitation and removes the card for every leader. **No** keeps it available until expiry. Failed saves keep the card and offer a retry.
+- Use the **X** next to the availability badge to dismiss a card you do not want to invite. This is distinct from sending an invitation, does not fabricate invitation history, and stays dismissed on the current browser across reloads and daily scans. Dismissals use encrypted private browser storage keyed to the departure; a later separate departure can appear again. The account-service code lives outside this repository, so shared cross-device dismissal is not yet implemented.
 - Monitor up to 1,000 clans whose game location is United States, keeping the
   existing core/rotating pool, verification, duplicate cooldown and lifecycle.
 - Verify a departed player's live profile before listing them as clanless.
