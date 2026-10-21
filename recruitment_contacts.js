@@ -1,9 +1,24 @@
 const RecruitmentContacts=(()=>{
- const history=new Map(),invitedTags=new Set(),loaded=new Map(),cacheKey='war-haven-recruit-visits:'+data.clanTag;
- let pending=[],started=false,dialog=null,saving=false,rerender=()=>{},loading=null,watched=[];
+ const history=new Map(),invitedTags=new Set(),dismissedTags=new Set(),loaded=new Map(),cacheKey='war-haven-recruit-visits:'+data.clanTag,dismissKey='war-haven-recruit-dismissed:'+data.clanTag;
+ let pending=[],started=false,dialog=null,saving=false,dismissalsReady=false,rerender=()=>{},loading=null,watched=[];
  const persist=()=>LeaderCache.set(cacheKey,pending);
  const valid=p=>p&&typeof p.id==='string'&&/^#[0289PYLQGRJCUV]{3,20}$/.test(p.tag)&&Number.isFinite(Date.parse(p.openedAt));
- const invited=tag=>invitedTags.has(tag),ready=tag=>loaded.has(tag)||invited(tag);
+ const invited=tag=>invitedTags.has(tag),dismissed=tag=>dismissedTags.has(tag),ready=tag=>dismissalsReady&&(loaded.has(tag)||invited(tag));
+ const persistDismissals=()=>LeaderCache.set(dismissKey,[...dismissedTags]);
+ function dismiss(tag){
+  tag=WarTracker.tag(tag);
+  if(!dismissalsReady||!/^#[0289PYLQGRJCUV]{3,20}$/.test(tag)||dismissedTags.has(tag))return false;
+  dismissedTags.add(tag);
+  pending=pending.filter(visit=>visit.tag!==tag);persist();
+  persistDismissals();rerender();
+  toast('Player removed from this recruiter. No invitation was recorded.');
+  return true;
+ }
+ function restoreDismissed(){
+  if(!dismissalsReady||!dismissedTags.size)return;
+  dismissedTags.clear();persistDismissals();rerender();
+  toast('Dismissed recruiter candidates restored on this device.');
+ }
  function remember(contact){
   const rows=history.get(contact.player_tag)||[];
   if(contact.invited)invitedTags.add(contact.player_tag);
@@ -38,9 +53,17 @@ const RecruitmentContacts=(()=>{
   document.addEventListener('visibilitychange',()=>document.hidden?away():returned());
   // Expire cards on an open page and receive invitations saved by other leaders.
   setInterval(()=>{if(!document.hidden&&document.body.dataset.page==='recruiter'){rerender();void load(watched);}},60000);
-  LeaderCache.ready().then(()=>{const saved=LeaderCache.get(cacheKey);if(Array.isArray(saved)){for(const p of saved.filter(valid))if(!pending.some(v=>v.id===p.id))pending.push({...p,away:true});}show();});
+  LeaderCache.ready().then(()=>{
+   const savedDismissals=LeaderCache.get(dismissKey);
+   if(Array.isArray(savedDismissals))for(const tag of savedDismissals)if(typeof tag==='string'&&/^#[0289PYLQGRJCUV]{3,20}$/.test(tag))dismissedTags.add(tag);
+   dismissalsReady=true;
+   const saved=LeaderCache.get(cacheKey);
+   if(Array.isArray(saved))for(const p of saved.filter(valid))if(!pending.some(v=>v.id===p.id)&&!dismissed(p.tag))pending.push({...p,away:true});
+   rerender();show();
+  });
  }
  function wire(root){
+  root.querySelectorAll('[data-recruit-dismiss]').forEach(button=>button.onclick=()=>dismiss(button.dataset.recruitDismiss));
   root.querySelectorAll('[data-recruit-open]').forEach(a=>a.onclick=()=>{
    const visit={id:crypto.randomUUID(),tag:a.dataset.recruitOpen,name:a.dataset.recruitName||a.dataset.recruitOpen,openedAt:new Date().toISOString(),away:false};
    if(valid(visit)){pending.push(visit);persist();}
@@ -65,5 +88,5 @@ const RecruitmentContacts=(()=>{
   })();
   try{await loading;}finally{loading=null;}
  }
- return {start,wire,load,status,invited,ready};
+ return {start,wire,load,status,invited,dismissed,dismiss,restoreDismissed,dismissedCount:()=>dismissedTags.size,ready};
 })();
