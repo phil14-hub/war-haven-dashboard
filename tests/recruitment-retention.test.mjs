@@ -54,6 +54,7 @@ try{
  $('recruit-summary-cards').querySelector('[data-recruit-filter="joined"]').click();
  assert.match($('recruitment-count').textContent,/1 matching player/);
  assert.match($('recruitment-results').textContent,/Recruit 403/,'An invited player who joined must remain visible in joined history');
+ assert.ok($('recruitment-results').querySelector('details.recruit-section[open]'),'Joined filter automatically expands its results');
  $('recruit-summary-cards').querySelector('[data-recruit-filter="ever"]').click();
  assert.match($('recruitment-count').textContent,/all-time number is historical/);
  $('recruit-reset').click();assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(0)+'"]'),null);
