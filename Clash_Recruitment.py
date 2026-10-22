@@ -1922,11 +1922,17 @@ def build_result_groups(leaver_store, filters, active_days, history_display_days
     still_rows = []
     joined_my = []
     no_longer = []
+    ever_joined = []
 
     for rec in leaver_store["players"].values():
         row = candidate_row(rec, now=now)
         detected = row["_detectedDt"]
         lifecycle = row["lifecycle"]
+
+        # Historical outcomes are separate from the seven-day candidate queue.
+        # Retain these records even after a candidate card expires or is invited.
+        if row.get("everJoinedMyClan"):
+            ever_joined.append(row)
 
         # Card age is the departure detection, not a daily verification or
         # status change. Keep older records in the archive, off the card list.
@@ -1975,6 +1981,7 @@ def build_result_groups(leaver_store, filters, active_days, history_display_days
         key=lambda r: parse_iso(r.get("lastStatusChangedAt")) or r["_detectedDt"],
         reverse=True,
     )
+    ever_joined.sort(key=lambda r: parse_iso(r.get("joinedMyClanAt")) or r["_detectedDt"], reverse=True)
 
     # The scan target never evicts yesterday's cards. All candidates from the
     # rolling active window remain in the report; invitations are tracked by
@@ -1986,6 +1993,7 @@ def build_result_groups(leaver_store, filters, active_days, history_display_days
         "still": still_rows,
         "joined_my": joined_my,
         "no_longer": no_longer,
+        "ever_joined": ever_joined,
         "active_all_count": len(active_combined),
         "new_all_count": len(new_rows),
         "still_all_count": len(still_rows),
@@ -2449,6 +2457,7 @@ applyFilters();
     path.write_text(document, encoding="utf-8")
     native = {'version': 1, 'updatedAt': run_stats.get('runFinishedAt'),
               'groups': {key: [clean_row(row) for row in groups[key]] for key in ('new', 'still', 'joined_my', 'no_longer')},
+              'joinedHistory': [clean_row(row) for row in groups.get('ever_joined', [])],
               'turnover': turnover, 'stats': run_stats, 'filters': filters}
     path.with_suffix('.json').write_text(json.dumps(native, ensure_ascii=False), encoding='utf-8')
 

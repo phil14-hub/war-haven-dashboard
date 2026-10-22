@@ -27,7 +27,8 @@ try {
  assert.equal($('donations').firstElementChild,panel);assert.equal(points.length,3);assert.match(panel.querySelector('.wh-chart-caption').textContent,/≥ 1,026/);
  assert.deepEqual(points.map(p=>p.dataset.donationTag),['#P0Q','#P0Y','#P0U']);
  assert.match(points[1].getAttribute('aria-label'),/0 troops/);assert.match(points[2].getAttribute('aria-label'),/unknown/);
- assert.equal(points[0].querySelector('.wh-hit').getAttribute('r'),'22');
+ assert.equal(points[0].tagName,'BUTTON');
+ assert.ok(parseFloat(w.getComputedStyle(points[0]).minHeight)>=44,'Donation bars retain a 44px touch target');
  const host=panel.querySelector('.wh-chart'),tip=host.querySelector('[role=tooltip]');
  const pointer=(point,type,pointerType)=>{const event=new w.Event(type,{bubbles:true});Object.defineProperty(event,'pointerType',{value:pointerType});point.dispatchEvent(event);};
  for(const pointerType of ['mouse','pen']){pointer(points[0],'pointerenter',pointerType);assert.equal(tip.hidden,false);assert.match(tip.textContent,/1,026 troops/);pointer(points[0],'pointerleave',pointerType);assert.equal(tip.hidden,true);}

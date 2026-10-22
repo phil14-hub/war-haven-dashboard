@@ -14,3 +14,14 @@ html[data-theme=light] .recruit-available{color:#256443;border-color:#cfe7da;bac
 @media(max-width:360px){.recruit-card-actions{margin-left:auto}.recruit-identity{row-gap:6px}}
 
 .recruit-contact-controls button[hidden]{display:none!important}
+.recruit-summary-filter{width:100%;min-width:0;min-height:100px;display:grid;grid-template-columns:28px minmax(0,1fr);align-items:start;gap:8px 12px;text-align:left;padding:18px;white-space:normal}
+.recruit-summary-filter>svg{width:24px;height:24px;color:var(--gold)}
+.recruit-summary-filter strong{display:block;font-size:28px;color:var(--gold);line-height:1.3;font-variant-numeric:tabular-nums}
+.recruit-summary-filter small{display:block;font-size:12px;overflow-wrap:anywhere}
+.recruit-summary-state{grid-column:2;font-size:11px;color:var(--muted)}
+.recruit-summary-filter[aria-pressed=true]{border-color:var(--gold);background:var(--warning-bg);box-shadow:inset 0 0 0 1px var(--gold)}
+.recruit-summary-filter[aria-pressed=true] .recruit-summary-state{color:var(--gold)}
+.recruit-summary-filter:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+.recruit-summary-filters .recruit-summary-filter{min-height:100px}
+.recruit-history-card dl{font-size:13px}.recruit-history-card dl>div{margin:10px 0}.recruit-history-card dt{color:var(--muted)}.recruit-history-card dd{margin:0;overflow-wrap:anywhere}.recruit-history-card>.recruit-open{margin-top:auto}
+@media(max-width:400px){.recruit-summary-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.recruit-summary-filter{padding:12px;grid-template-columns:minmax(0,1fr);gap:5px}.recruit-summary-state{grid-column:1}.recruit-summary-filter>svg{width:20px;height:20px}}

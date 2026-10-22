@@ -63,6 +63,18 @@ class RestoredProgressTests(unittest.TestCase):
 
 
 class RecruitRetentionTests(unittest.TestCase):
+    def test_ever_joined_history_outlives_seven_day_candidate_cards(self):
+        joined=self.rec(401,days=30,lifecycle='JOINED_MY_CLAN')
+        left=self.rec(402,days=60,lifecycle='JOINED_OTHER_CLAN')
+        for row in (joined,left):row['joinedMyClanAt']=(self.now-timedelta(days=20)).isoformat()
+        store={'players':{row['tag']:row for row in (joined,left)}}
+        before=copy.deepcopy(store)
+        with patch.object(recruiter,'utc_now',return_value=self.now):
+            groups=recruiter.build_result_groups(store,self.filters,7,7,50)
+        self.assertEqual(len(groups['ever_joined']),2)
+        self.assertFalse(groups['new'] or groups['still'] or groups['joined_my'] or groups['no_longer'])
+        self.assertEqual(store,before)
+
     def setUp(self):
         self.now = datetime(2030, 1, 10, tzinfo=timezone.utc)
         self.filters = dict(min_th=11, min_war_stars=0, min_best_trophies=0,
