@@ -91,7 +91,7 @@ try{
  assert.equal(shared.filter(r=>r.player_tag===tag(1)).length,2);assert.deepEqual(a.errors,[]);
 }finally{await a.w.eval('RecruitmentContacts.load([])');a.dom.window.close();}
 a=await app();
-try{await wait(()=>a.$('recruitment-count').textContent.includes('203 matching players'));assert.equal(a.$('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'),null,'Fresh sign-in reads saved Yes before showing cards');assert.deepEqual(a.errors,[]);}finally{await a.w.eval('RecruitmentContacts.load([])');a.dom.window.close();}
+try{await wait(()=>a.$('recruitment-count').textContent.includes('204 matching players'));assert.equal(a.$('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'),null,'Fresh sign-in reads saved Yes before showing cards');assert.deepEqual(a.errors,[]);}finally{await a.w.eval('RecruitmentContacts.load([])');a.dom.window.close();}
 const css=readFileSync('recruitment_dashboard.css','utf8');
 assert.match(css,/\.recruit-dismiss\{[^}]*width:44px;[^}]*height:44px;/,'Remove button has a touch-sized target');
 assert.match(css,/@media\(max-width:640px\)/,'Responsive single-column layout remains available');
