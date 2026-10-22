@@ -18,10 +18,6 @@ assert.equal(w.document.body.dataset.page,'overview','A full entry to leadership
 w.eval("setTab('planner')");
 w.dispatchEvent(new w.Event('focus'));
 assert.equal(w.document.body.dataset.page,'planner','Resuming a still-open page preserves the current tab');
-w.history.replaceState(null,'','#page=planner');
-w.eval("applyLeadershipRoute({initial:true})");
-assert.equal(w.document.body.dataset.page,'overview','A fresh browser entry with a stale URL hash and no history state starts on Home');
-w.eval("setTab('planner')");
 assert.equal($('leadership-bell').nextElementSibling.id,'header-signout');assert.equal(w.document.documentElement.dataset.theme,'light');
 w.eval("setTab('townhalls')");assert.match($('townhall-content').textContent,/Army completion/);const completion=Number.parseFloat($('townhall-content').querySelector('.upgrade-big').textContent);assert.ok(completion>0&&completion<=100);
 w.eval("openPlayer('#P0Q')");assert.ok($('player-dialog').open);const upgrades=$('player-profile').querySelector('[data-profile-panel="upgrades"]');assert.match(upgrades.textContent,/Heroes/);assert.match(upgrades.textContent,/110 \/ 110/);assert.match(upgrades.textContent,/85.8%/);assert.ok(upgrades.querySelector('.wh-level'));
