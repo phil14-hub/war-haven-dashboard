@@ -42,11 +42,11 @@ var WarHavenMemberOverview = (() => {
       stat('Three-star rate', shown(war.threeStarPercent, '%'), 'Per captured attack') +
       stat('Average destruction', shown(war.averageDestructionPercent, '%'), 'When recorded');
     const armyHtml = stat('Army completion', shown(army.completionPercent, '%'), army.available ? 'Current Town Hall profile' : 'Waiting for a matching player profile') +
-      ...['troops','spells','siege','heroes','pets'].map(key => {
+      ['troops','spells','siege','heroes','pets'].map(key => {
         const group = groups[key] || {};
         return stat(key[0].toUpperCase()+key.slice(1), shown(group.completionPercent, '%'),
           group.available ? `${shown(group.remainingLevels)} levels remaining` : 'Not captured');
-      });
+      }).join('');
     const categories = village.categories || {};
     const buildHtml = ['Buildings','Defenses','Traps','Walls'].map(category => {
       const entry = categories[category] || {};
