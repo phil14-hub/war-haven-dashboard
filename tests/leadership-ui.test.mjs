@@ -9,6 +9,7 @@ const dom=new JSDOM(readFileSync(file,'utf8'),{url:'https://portal.warhavenclan.
 w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.matchMedia=()=>({matches:false,addEventListener(){}});w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=function(){};
 w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
 w.fetch=async(url,options={})=>{const path=new URL(url,w.location.href).pathname;let value={};if(path.endsWith('/preferences/clan'))value={version:1,preferences:{theme:'light',timeZone:'America/New_York',clock24:true,units:'metric',dateFormat:'local'}};if(path.endsWith('/notifications'))value={notifications:[{id:'news1',title:'Upcoming war',body:'Use your attacks.',created_at:'2026-10-17T00:00:00Z',read_at:null}]};if(path.endsWith('/village-import'))value={villageImport:null};if(path.endsWith('/list'))value={accounts:[],counts:{pending:0,active:0,suspended:0},capabilities:{individual:true}};if(path.endsWith('/history'))value={items:[]};if(path.endsWith('/records'))value={records:[]};return new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});};
+w.history.replaceState({warHavenLeader:true},'',w.location.href);
 for(const script of w.document.querySelectorAll('script:not([type])'))if(script.textContent.trim())runInContext(script.textContent,dom.getInternalVMContext());
 await new Promise(r=>setTimeout(r,30));
 const $=id=>w.document.getElementById(id);
