@@ -75,13 +75,23 @@ const RecruitmentContacts=(()=>{
   const needed=watched.filter(t=>force||!loaded.has(t)||Date.now()-loaded.get(t)>=60000);if(!needed.length)return;
   loading=(async()=>{
    try{
-    // Short batches fit the API request size even for hundreds of weekly cards.
-    for(let i=0;i<needed.length;i+=100){
-     const batch=needed.slice(i,i+100),result=await memberFeatureRequest('admin/recruitment-invitations',{read:true,tags:batch});
-     for(const tag of result.invitedTags||[])invitedTags.add(tag);
-     for(const row of result.contacts)remember(row);
-     for(const tag of batch)loaded.set(tag,Date.now());
+    // Check short batches in parallel, showing only verified records as each completes.
+    const batches=[];for(let i=0;i<needed.length;i+=100)batches.push(needed.slice(i,i+100));
+    const failed=[];let next=0;
+    async function worker(){
+     while(next<batches.length){
+      const batch=batches[next++];
+      try{
+       const result=await memberFeatureRequest('admin/recruitment-invitations',{read:true,tags:batch});
+       for(const tag of result.invitedTags||[])invitedTags.add(tag);
+       for(const row of result.contacts||[])remember(row);
+       for(const tag of batch)loaded.set(tag,Date.now());
+       rerender();
+      }catch(error){failed.push(error);}
+     }
     }
+    await Promise.all(Array.from({length:Math.min(3,batches.length)},()=>worker()));
+    if(failed.length)throw Error(failed.length+' history batch'+(failed.length===1?'':'es')+' failed. The unchecked candidates remain hidden; use Retry invitation history.');
     if($('recruit-contact-status'))$('recruit-contact-status').textContent='Invitation records stay saved across scans. Invited players are hidden for all leaders.';
    }catch(error){if($('recruit-contact-status'))$('recruit-contact-status').textContent='Invitation history could not load: '+error.message+'. Use Retry invitation history.';}
    finally{rerender();}

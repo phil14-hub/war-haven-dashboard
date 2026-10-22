@@ -1,7 +1,7 @@
 const RecruitmentDashboard=(()=>{
  const sections=[['new','New this scan'],['still','Still available'],['joined_my','Joined War Haven'],['no_longer','No longer available']];
  const labels={NEW:'New this scan',STILL_CLANLESS:'Still clanless',JOINED_MY_CLAN:'Joined War Haven',JOINED_OTHER_CLAN:'Joined another clan',BELOW_FILTERS:'Outside filters',ARCHIVED:'Archived',COOLDOWN_CLANLESS:'Duplicate cooldown',VERIFY_ERROR:'Needs verification'};
- let model=null,observer=null,limits={},filters={search:'',section:'all',hall:0,stars:0,league:0,sort:'newest'};
+ let model=null,observer=null,limits={},filters={search:'',section:'all',hall:0,stars:0,league:0,sort:'newest',quick:'all'};
  const recent=row=>Number.isFinite(Date.parse(row.detectedAt))&&Date.parse(row.detectedAt)>=Date.now()-7*86400000;
  const visible=row=>recent(row)&&RecruitmentContacts.ready(WarTracker.tag(row.tag))&&!RecruitmentContacts.invited(WarTracker.tag(row.tag))&&!RecruitmentContacts.dismissed(WarTracker.tag(row.tag));
  function normalize(report){
@@ -27,7 +27,8 @@ const RecruitmentDashboard=(()=>{
  }
  function matches(row,section){
   const q=filters.search.toLowerCase().trim();
-  return (!q||[row.name,row.tag,row.sourceClan,row.sourceClanTag,row.currentClan,row.leagueTierName].join(' ').toLowerCase().includes(q))&&(filters.section==='all'||section===filters.section)&&(row.townHallLevel||0)>=filters.hall&&(row.warStars||0)>=filters.stars&&(row.leagueTierScore||0)>=filters.league;
+  const quick=filters.quick==='all'||filters.quick==='available'&&['new','still'].includes(section)||filters.quick==='new'&&section==='new'||filters.quick==='joined'&&section==='joined_my'||filters.quick==='ever'&&(section==='joined_my'||Boolean(row.joinedMyClanAt));
+  return quick&&(!q||[row.name,row.tag,row.sourceClan,row.sourceClanTag,row.currentClan,row.leagueTierName].join(' ').toLowerCase().includes(q))&&(filters.section==='all'||section===filters.section)&&(row.townHallLevel||0)>=filters.hall&&(row.warStars||0)>=filters.stars&&(row.leagueTierScore||0)>=filters.league;
  }
  function compare(a,b){
   const number=k=>(Number(b[k])||0)-(Number(a[k])||0);
@@ -51,14 +52,19 @@ const RecruitmentDashboard=(()=>{
  function renderResults(){
   let total=0;const pending=Object.values(model.groups).flat().filter(row=>recent(row)&&!RecruitmentContacts.ready(row.tag)).length;
   const counts=Object.fromEntries(sections.map(([key])=>[key,(model.groups[key]||[]).filter(visible).length]));
-  $('recruit-summary-cards').innerHTML=miniCards([['Available',counts.new+counts.still,'recruit'],['New this scan',counts.new,'stars'],['Joined our clan',counts.joined_my,'users'],['Ever joined',model.stats?.everJoinedMyClanCount??counts.joined_my,'check']]);
+  const shortcuts=[['available','Available',counts.new+counts.still],['new','New this scan',counts.new],['joined','Joined our clan',counts.joined_my],['ever','Ever joined',model.stats?.everJoinedMyClanCount??counts.joined_my]];
+  $('recruit-summary-cards').innerHTML='<div class="recruit-summary-filter-grid" role="group" aria-label="Quick recruiter filters">'+shortcuts.map(([key,label,value])=>'<button type="button" class="panel recruit-summary-filter" data-recruit-filter="'+key+'" aria-pressed="'+(filters.quick===key)+'" aria-label="Filter: '+label+'"><strong>'+formatNumber(value)+'</strong><span>'+label+'</span></button>').join('')+'</div>';
+  $('recruit-summary-cards').querySelectorAll('[data-recruit-filter]').forEach(button=>button.onclick=()=>{
+   filters.quick=filters.quick===button.dataset.recruitFilter?'all':button.dataset.recruitFilter;
+   filters.section='all';$('recruit-section').value='all';renderResults();
+  });
   $('recruitment-results').innerHTML=sections.filter(([key])=>filters.section==='all'||filters.section===key).map(([key,label])=>{
    const matched=(model.groups[key]||[]).filter(row=>visible(row)&&matches(row,key)).sort(compare),shown=matched.slice(0,limits[key]||60);total+=matched.length;
-   const content=`<div class="recruit-grid">${shown.map(row=>candidate(row,key)).join('')||'<p class="small muted recruit-empty">No candidates match these filters.</p>'}</div>${shown.length<matched.length?`<div class="recruit-more"><p class="small muted">Showing ${shown.length} of ${matched.length} players. Search and filters include the full list.</p><button data-recruit-more="${key}">Show next ${Math.min(60,matched.length-shown.length)} players</button></div>`:''}`;
+   const content=`<div class="recruit-grid">${shown.map(row=>candidate(row,key)).join('')||'<p class="small muted recruit-empty">'+(pending?'Checking invitation history before showing candidates…':'No candidates match these filters.')+'</p>'}</div>${shown.length<matched.length?`<div class="recruit-more"><p class="small muted">Showing ${shown.length} of ${matched.length} players. Search and filters include the full list.</p><button data-recruit-more="${key}">Show next ${Math.min(60,matched.length-shown.length)} players</button></div>`:''}`;
    return ['joined_my','no_longer'].includes(key)?`<details class="recruit-section" ${filters.section===key?'open':''}><summary>${label}<span class="pill">${matched.length}</span></summary>${content}</details>`:`<section class="recruit-section"><div class="section-heading"><h2>${label}</h2><span class="pill">${matched.length}</span></div>${content}</section>`;
   }).join('');
   $('recruitment-results').querySelectorAll('[data-recruit-more]').forEach(button=>button.onclick=()=>{const key=button.dataset.recruitMore;limits[key]=(limits[key]||60)+60;renderResults();});
-  $('recruitment-count').textContent=total+' matching player'+(total===1?'':'s')+(pending?' · Checking invitation history for '+pending+' players…':'');
+  $('recruitment-count').textContent=total+' matching player'+(total===1?'':'s')+(pending?' · Checking invitation history for '+pending+' players…':'')+(filters.quick==='ever'?' · Only players retained in the seven-day candidate list are shown; the all-time number is historical.':'');
   const restore=$('recruit-restore-dismissed');if(restore){const count=RecruitmentContacts.dismissedCount();restore.hidden=!count;restore.textContent='Restore removed ('+count+')';}
   RecruitmentContacts.wire($('recruitment-results'));reveal();
  }
@@ -79,9 +85,9 @@ const RecruitmentDashboard=(()=>{
   $('recruitment-content').innerHTML='<div id="recruit-summary-cards"></div>'+`${summary.baselineCreated?'<p class="notice">The first roster baseline is saved. Later scans detect departures and verify which players are clanless.</p>':''}<div class="panel recruit-filters"><div class="section-heading"><h2>Find your next clanmate</h2><button id="recruit-reset" class="text-button">Reset filters</button></div><div class="growth-controls"><label class="recruit-search">Search<input id="recruit-search" type="search" placeholder="Player, tag or former clan"></label><label>Status<select id="recruit-section"><option value="all">All statuses</option>${sections.map(([key,label])=>`<option value="${key}">${label}</option>`).join('')}</select></label><label>Minimum Town Hall<input id="recruit-hall" type="number" min="0" max="99" value="0"></label><label>Minimum war stars<input id="recruit-stars" type="number" min="0" value="0"></label><label>Minimum league<select id="recruit-league"><option value="0">Any league</option>${leagueChoices.map(([score,label])=>`<option value="${Number(score)}">${esc(label)}+</option>`).join('')}</select></label><label>Sort by<select id="recruit-sort"><option value="newest">Newest departure</option><option value="window">Tightest leave window</option><option value="hall">Highest Town Hall</option><option value="stars">Most war stars</option><option value="best">Best trophies</option></select></label></div></div><p id="recruitment-count" class="small muted" aria-live="polite"></p><div class="recruit-contact-controls"><p id="recruit-contact-status" class="small muted" role="status">Loading shared invitation history…</p><button id="recruit-history-retry" class="text-button">Retry invitation history</button><button id="recruit-restore-dismissed" class="text-button" hidden>Restore removed</button></div><div id="recruitment-results"></div>${turnover()}<p class="notice">Daily scans add to this list. Cards remain for seven days from departure detection; Yes removes a card and keeps its invitation and player history saved. The × removes an unwanted player without recording an invitation; dismissed players remain hidden on this browser until you choose Restore removed. Availability was verified at the saved scan time. Check each profile before inviting. A departure window shows the time between successful scans, rather than an exact leave time. A U.S. clan listing does not confirm a player’s location or language.</p>`;
   $('recruit-history-retry').onclick=()=>RecruitmentContacts.load(Object.values(model.groups).flat().map(r=>r.tag),{force:true});
   $('recruit-restore-dismissed').onclick=()=>RecruitmentContacts.restoreDismissed();
-  for(const key of ['search','section','hall','stars','league','sort'])$('recruit-'+key).oninput=()=>{filters[key]=['hall','stars','league'].includes(key)?Math.max(0,Number($('recruit-'+key).value)||0):$('recruit-'+key).value;renderResults();};
-  for(const[key,value]of Object.entries(filters))$('recruit-'+key).value=value;
-  $('recruit-reset').onclick=()=>{filters={search:'',section:'all',hall:0,stars:0,league:0,sort:'newest'};for(const[key,value]of Object.entries(filters))$('recruit-'+key).value=value;renderResults();};renderResults();RecruitmentContacts.load(Object.values(model.groups).flat().map(r=>WarTracker.tag(r.tag)));
+  for(const key of ['search','section','hall','stars','league','sort'])$('recruit-'+key).oninput=()=>{filters[key]=['hall','stars','league'].includes(key)?Math.max(0,Number($('recruit-'+key).value)||0):$('recruit-'+key).value;if(key==='section')filters.quick='all';renderResults();};
+  for(const[key,value]of Object.entries(filters))if($('recruit-'+key))$('recruit-'+key).value=value;
+  $('recruit-reset').onclick=()=>{filters={search:'',section:'all',hall:0,stars:0,league:0,sort:'newest',quick:'all'};for(const[key,value]of Object.entries(filters))if($('recruit-'+key))$('recruit-'+key).value=value;renderResults();};renderResults();RecruitmentContacts.load(Object.values(model.groups).flat().map(r=>WarTracker.tag(r.tag)));
  }
  return {open,matches,candidate,invalidate(){model=null;}};
 })();
