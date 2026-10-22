@@ -50,6 +50,8 @@ const RecruitmentDashboard=(()=>{
   $('recruitment-results').querySelectorAll('.recruit-card').forEach((card,index)=>{card.style.setProperty('--recruit-delay',Math.min(index%3,2)*55+'ms');card.classList.add('recruit-scroll-pending');observer.observe(card);});
  }
  function renderResults(){
+  // When a live history update re-renders the cards, keep the selected filter's keyboard focus.
+  const activeQuick=document.activeElement?.dataset?.recruitFilter||null;
   let total=0;const pending=Object.values(model.groups).flat().filter(row=>recent(row)&&!RecruitmentContacts.ready(row.tag)).length;
   const counts=Object.fromEntries(sections.map(([key])=>[key,(model.groups[key]||[]).filter(visible).length]));
   const shortcuts=[['available','Available',counts.new+counts.still],['new','New this scan',counts.new],['joined','Joined our clan',counts.joined_my],['ever','Ever joined',model.stats?.everJoinedMyClanCount??counts.joined_my]];
@@ -58,7 +60,9 @@ const RecruitmentDashboard=(()=>{
    filters.quick=filters.quick===button.dataset.recruitFilter?'all':button.dataset.recruitFilter;
    filters.section='all';$('recruit-section').value='all';renderResults();
   });
-  $('recruitment-results').innerHTML=sections.filter(([key])=>filters.section==='all'||filters.section===key).map(([key,label])=>{
+  if(activeQuick)$('recruit-summary-cards').querySelector('[data-recruit-filter="'+activeQuick+'"]')?.focus({preventScroll:true});
+  const quickSections={available:['new','still'],new:['new'],joined:['joined_my'],ever:['joined_my','no_longer','new','still']};
+  $('recruitment-results').innerHTML=sections.filter(([key])=>(filters.section==='all'||filters.section===key)&&(!quickSections[filters.quick]||quickSections[filters.quick].includes(key))).map(([key,label])=>{
    const matched=(model.groups[key]||[]).filter(row=>visible(row)&&matches(row,key)).sort(compare),shown=matched.slice(0,limits[key]||60);total+=matched.length;
    const content=`<div class="recruit-grid">${shown.map(row=>candidate(row,key)).join('')||'<p class="small muted recruit-empty">'+(pending?'Checking invitation history before showing candidates…':'No candidates match these filters.')+'</p>'}</div>${shown.length<matched.length?`<div class="recruit-more"><p class="small muted">Showing ${shown.length} of ${matched.length} players. Search and filters include the full list.</p><button data-recruit-more="${key}">Show next ${Math.min(60,matched.length-shown.length)} players</button></div>`:''}`;
    return ['joined_my','no_longer'].includes(key)?`<details class="recruit-section" ${filters.section===key?'open':''}><summary>${label}<span class="pill">${matched.length}</span></summary>${content}</details>`:`<section class="recruit-section"><div class="section-heading"><h2>${label}</h2><span class="pill">${matched.length}</span></div>${content}</section>`;

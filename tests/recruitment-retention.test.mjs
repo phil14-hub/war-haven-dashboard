@@ -44,7 +44,9 @@ try{
  const shortcut=$('recruit-summary-cards');
  assert.equal(shortcut.querySelectorAll('button[data-recruit-filter]').length,4,'Summary counts must act as filters');
  for(const b of shortcut.querySelectorAll('button[data-recruit-filter]'))assert.equal(b.getAttribute('type'),'button');
+ shortcut.querySelector('[data-recruit-filter="new"]').focus();
  shortcut.querySelector('[data-recruit-filter="new"]').click();
+ assert.equal(w.document.activeElement?.dataset?.recruitFilter,'new','Filtering preserves keyboard focus');
  assert.equal($('recruit-summary-cards').querySelector('[data-recruit-filter="new"]').getAttribute('aria-pressed'),'true');
  assert.match($('recruitment-count').textContent,/0 matching players/);
  $('recruit-summary-cards').querySelector('[data-recruit-filter="available"]').click();
