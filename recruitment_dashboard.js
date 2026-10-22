@@ -3,7 +3,7 @@ const RecruitmentDashboard=(()=>{
  const labels={NEW:'New this scan',STILL_CLANLESS:'Still clanless',JOINED_MY_CLAN:'Joined War Haven',JOINED_OTHER_CLAN:'Joined another clan',BELOW_FILTERS:'Outside filters',ARCHIVED:'Archived',COOLDOWN_CLANLESS:'Duplicate cooldown',VERIFY_ERROR:'Needs verification'};
  let model=null,observer=null,limits={},filters={search:'',section:'all',hall:0,stars:0,league:0,sort:'newest',quick:'all'};
  const recent=row=>Number.isFinite(Date.parse(row.detectedAt))&&Date.parse(row.detectedAt)>=Date.now()-7*86400000;
- const visible=row=>recent(row)&&RecruitmentContacts.ready(WarTracker.tag(row.tag))&&!RecruitmentContacts.invited(WarTracker.tag(row.tag))&&!RecruitmentContacts.dismissed(WarTracker.tag(row.tag));
+ const visible=(row,section)=>recent(row)&&RecruitmentContacts.ready(WarTracker.tag(row.tag))&&(section==="joined_my"||section==="no_longer"||(!RecruitmentContacts.invited(WarTracker.tag(row.tag))&&!RecruitmentContacts.dismissed(WarTracker.tag(row.tag))));
  function normalize(report){
   const groups=Object.fromEntries(sections.map(([key])=>[key,[]])),latest=new Map();
   for(const[key]of sections)for(const row of report.groups?.[key]||[]){
@@ -53,7 +53,7 @@ const RecruitmentDashboard=(()=>{
   // When a live history update re-renders the cards, keep the selected filter's keyboard focus.
   const activeQuick=document.activeElement?.dataset?.recruitFilter||null;
   let total=0;const pending=Object.values(model.groups).flat().filter(row=>recent(row)&&!RecruitmentContacts.ready(row.tag)).length;
-  const counts=Object.fromEntries(sections.map(([key])=>[key,(model.groups[key]||[]).filter(visible).length]));
+  const counts=Object.fromEntries(sections.map(([key])=>[key,(model.groups[key]||[]).filter(row=>visible(row,key)).length]));
   const shortcuts=[['available','Available',counts.new+counts.still],['new','New this scan',counts.new],['joined','Joined our clan',counts.joined_my],['ever','Ever joined',model.stats?.everJoinedMyClanCount??counts.joined_my]];
   $('recruit-summary-cards').innerHTML='<div class="recruit-summary-filter-grid" role="group" aria-label="Quick recruiter filters">'+shortcuts.map(([key,label,value])=>'<button type="button" class="panel recruit-summary-filter" data-recruit-filter="'+key+'" aria-pressed="'+(filters.quick===key)+'" aria-label="Filter: '+label+'"><strong>'+formatNumber(value)+'</strong><span>'+label+'</span></button>').join('')+'</div>';
   $('recruit-summary-cards').querySelectorAll('[data-recruit-filter]').forEach(button=>button.onclick=()=>{
@@ -63,7 +63,7 @@ const RecruitmentDashboard=(()=>{
   if(activeQuick)$('recruit-summary-cards').querySelector('[data-recruit-filter="'+activeQuick+'"]')?.focus({preventScroll:true});
   const quickSections={available:['new','still'],new:['new'],joined:['joined_my'],ever:['joined_my','no_longer','new','still']};
   $('recruitment-results').innerHTML=sections.filter(([key])=>(filters.section==='all'||filters.section===key)&&(!quickSections[filters.quick]||quickSections[filters.quick].includes(key))).map(([key,label])=>{
-   const matched=(model.groups[key]||[]).filter(row=>visible(row)&&matches(row,key)).sort(compare),shown=matched.slice(0,limits[key]||60);total+=matched.length;
+   const matched=(model.groups[key]||[]).filter(row=>visible(row,key)&&matches(row,key)).sort(compare),shown=matched.slice(0,limits[key]||60);total+=matched.length;
    const content=`<div class="recruit-grid">${shown.map(row=>candidate(row,key)).join('')||'<p class="small muted recruit-empty">'+(pending?'Checking invitation history before showing candidates…':'No candidates match these filters.')+'</p>'}</div>${shown.length<matched.length?`<div class="recruit-more"><p class="small muted">Showing ${shown.length} of ${matched.length} players. Search and filters include the full list.</p><button data-recruit-more="${key}">Show next ${Math.min(60,matched.length-shown.length)} players</button></div>`:''}`;
    return ['joined_my','no_longer'].includes(key)?`<details class="recruit-section" ${filters.section===key?'open':''}><summary>${label}<span class="pill">${matched.length}</span></summary>${content}</details>`:`<section class="recruit-section"><div class="section-heading"><h2>${label}</h2><span class="pill">${matched.length}</span></div>${content}</section>`;
   }).join('');
