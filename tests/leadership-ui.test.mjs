@@ -14,10 +14,10 @@ for(const script of w.document.querySelectorAll('script:not([type])'))if(script.
 await new Promise(r=>setTimeout(r,30));
 const $=id=>w.document.getElementById(id);
 assert.ok(w.document.body.classList.contains('app-ready'),$('file-preview')?.textContent.slice(0,700));
-assert.equal(w.document.body.dataset.page,'overview','A full entry to leadership starts on Home, even when a stale tab hash exists');
-w.eval("setTab('planner')");
+assert.equal(w.document.body.dataset.page,'planner','A full entry preserves the URL-selected section instead of forcing Home');
+w.eval("setTab('history')");
 w.dispatchEvent(new w.Event('focus'));
-assert.equal(w.document.body.dataset.page,'planner','Resuming a still-open page preserves the current tab');
+assert.equal(w.document.body.dataset.page,'history','Resuming a still-open page preserves the current tab');
 assert.equal($('leadership-bell').nextElementSibling.id,'header-signout');assert.equal(w.document.documentElement.dataset.theme,'light');
 w.eval("setTab('townhalls')");assert.match($('townhall-content').textContent,/Army completion/);const completion=Number.parseFloat($('townhall-content').querySelector('.upgrade-big').textContent);assert.ok(completion>0&&completion<=100);
 w.eval("openPlayer('#P0Q')");assert.ok($('player-dialog').open);const upgrades=$('player-profile').querySelector('[data-profile-panel="upgrades"]');assert.match(upgrades.textContent,/Heroes/);assert.match(upgrades.textContent,/110 \/ 110/);assert.match(upgrades.textContent,/85.8%/);assert.ok(upgrades.querySelector('.wh-level'));
