@@ -86,6 +86,69 @@ def donation_summary(history, as_of):
     return {'total': total, 'since': since}
 
 
+
+def overview_snapshot(member, updated_at):
+    """Optional member-only summary. Unknown and incomplete observations remain unknown."""
+    own_wars = member.get('wars') or []
+    final_wars = [war for war in own_wars if war.get('final') is True]
+    outcomes = {name: sum(war.get('outcome') == name for war in final_wars)
+                for name in ('Victory', 'Defeat', 'Tie')}
+    stats = member.get('warStats') or {}
+    def ratio(numerator, denominator):
+        return round(numerator / denominator * 100, 1) if (isinstance(numerator, (int, float))
+            and not isinstance(numerator, bool) and count(denominator) and denominator) else None
+
+    army = member.get('army') or {}
+    status = member.get('profileStatus') or {}
+    groups = {}
+    if status.get('available'):
+        for name in ('troops', 'spells', 'siege', 'heroes', 'pets', 'equipment'):
+            group = (army.get('groups') or {}).get(name)
+            if not isinstance(group, dict):
+                continue
+            groups[name] = {
+                'completionPercent': group.get('completionPercent') if group.get('available') else None,
+                'remainingLevels': group.get('remainingLevels') if group.get('available') else None,
+                'maxed': group.get('maxed') if group.get('available') else None,
+                'count': group.get('count'),
+                'available': bool(group.get('available'))
+            }
+
+    latest = final_wars[-1] if final_wars else None
+    return {
+        'updatedAt': updated_at,
+        'war': {
+            'confirmedAppearances': stats.get('appearances', 0),
+            'victories': outcomes['Victory'], 'defeats': outcomes['Defeat'],
+            'ties': outcomes['Tie'],
+            'outcomesUnknown': len(final_wars) - sum(outcomes.values()),
+            'attacksUsed': stats.get('used'),
+            'attacksAllowed': stats.get('allowed'),
+            'attackUsePercent': ratio(stats.get('used'), stats.get('allowed')),
+            'averageStars': round(stats['stars'] / stats['attacks'], 2) if stats.get('attacks') else None,
+            'threeStarPercent': ratio(stats.get('triples'), stats.get('attacks')),
+            'averageDestructionPercent': round(stats['destruction'] / stats['destructionAttacks'], 1) if stats.get('destructionAttacks') else None,
+            'latestConfirmed': {'id': latest.get('id'), 'opponent': latest.get('opponent'),
+                                'outcome': latest.get('outcome'), 'endTime': latest.get('endTime')} if latest else None
+        },
+        'army': {
+            'available': bool(status.get('available')),
+            'capturedAt': status.get('capturedAt'),
+            'completionPercent': member.get('armyPercent') if status.get('available') else None,
+            'groups': groups
+        },
+        'activity': {
+            'trophies': member.get('trophies'),
+            'seasonDonations': member.get('seasonDonations'),
+            'donationsReceived': member.get('donationsReceived'),
+            'observedDonations': (member.get('observedDonations') or {}).get('total'),
+            'capitalGold': member.get('capitalGold'),
+            'raidLoot': member.get('raidLoot'),
+            'warPreference': member.get('warPreference')
+        }
+    }
+
+
 def build_snapshot(state, tracker):
     at = state.get('lastSuccessfulSync')
     roster = state.get('roster')
@@ -183,6 +246,7 @@ def build_snapshot(state, tracker):
                 'warStats': stats, 'leagueSeries': league_series, 'armySeries': army_series, 'armyPercent': army.get('completionPercent'), 'army': army,
                 'heroes': [{'name': h['name'], 'level': h['level'], 'maximum': h['maximum']} for h in army.get('groups', {}).get('heroes', {}).get('items', [])],
                 'achievements': badges, 'profileStatus': profile_status, 'season': str(at)[:7]}
+        view['overview'] = overview_snapshot(view, at)
         members[tag] = view
         comparisons.append({'tag': tag, 'name': view['name'], 'townHallLevel': view['townHallLevel'], 'leaguePoints': league.get('points'),
                             'seasonDonations': view['seasonDonations'], 'capitalGold': capital, 'warStars': stats['stars'] if stats['attacks'] else None,
