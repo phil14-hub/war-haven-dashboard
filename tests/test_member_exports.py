@@ -43,4 +43,42 @@ class MemberExportTests(unittest.TestCase):
   state['edits']['exceptions']['war::#P0Y']={'value':True}
   self.assertEqual(member_exports.build_snapshot(state,tracker)['members']['#P0Y']['warStats']['allowed'],0)
 
+
+ def test_overview_summarizes_verified_wars_and_unknown_metrics(self):
+  state=self.state()
+  known={'id':'complete','kind':'Regular','endTime':'2030-01-02T20:00:00Z',
+         'state':'warEnded','final':True,'rosterComplete':True,'result':'win',
+         'attacksPerMember':2,'opponent':{'name':'Test Clan'},
+         'participants':[{'tag':'#P0Y','attacksUsed':2,'starsEarned':5,
+                          'attacks':[{'stars':2,'destructionPercentage':80},
+                                     {'stars':3,'destructionPercentage':100}]}]}
+  unfinished={**copy.deepcopy(known),'id':'not-final','final':False,'result':'lose'}
+  state['wars']=[known,unfinished]
+  player=member_exports.build_snapshot(state,tracker)['members']['#P0Y']
+  overview=player['overview']
+  self.assertEqual(overview['updatedAt'],state['lastSuccessfulSync'])
+  self.assertEqual(overview['war']['victories'],1)
+  self.assertEqual(overview['war']['defeats'],0)
+  self.assertEqual(overview['war']['confirmedAppearances'],1)
+  self.assertEqual(overview['war']['attackUsePercent'],100.0)
+  self.assertEqual(overview['war']['averageStars'],2.5)
+  self.assertEqual(overview['war']['threeStarPercent'],50.0)
+  self.assertEqual(overview['war']['averageDestructionPercent'],90.0)
+  self.assertEqual(overview['war']['latestConfirmed']['opponent'],'Test Clan')
+  self.assertIsNone(overview['army']['completionPercent'])
+  self.assertFalse(overview['army']['available'])
+  self.assertEqual(overview['activity']['seasonDonations'],100)
+  self.assertNotIn('PRIVATE',json.dumps(overview))
+
+ def test_overview_does_not_invent_zero_attacks_or_outcomes(self):
+  state=self.state()
+  player=member_exports.build_snapshot(state,tracker)['members']['#P0Y']
+  overview=player['overview']
+  self.assertEqual(overview['war']['confirmedAppearances'],0)
+  self.assertIsNone(overview['war']['averageStars'])
+  self.assertIsNone(overview['war']['attackUsePercent'])
+  self.assertIsNone(overview['war']['threeStarPercent'])
+  self.assertIsNone(overview['war']['latestConfirmed'])
+  self.assertIsNone(overview['army']['completionPercent'])
+
 if __name__=='__main__':unittest.main()
