@@ -14,3 +14,13 @@ html[data-theme=light] .recruit-available{color:#256443;border-color:#cfe7da;bac
 @media(max-width:360px){.recruit-card-actions{margin-left:auto}.recruit-identity{row-gap:6px}}
 
 .recruit-contact-controls button[hidden]{display:none!important}
+
+/* Touch-friendly recruiter quick filters, responsive from narrow phones to desktop. */
+.recruit-summary-filter-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:12px 0 20px}
+.recruit-summary-filter{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:5px;text-align:left;min-width:0;min-height:84px;padding:15px 18px;color:var(--ink);cursor:pointer;border:1px solid var(--line)}
+.recruit-summary-filter strong{font-size:clamp(20px,2vw,28px);line-height:1.15;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.recruit-summary-filter span{font-size:12px;color:var(--muted);line-height:1.35}
+.recruit-summary-filter[aria-pressed="true"]{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;background:var(--selected-bg,rgba(250,192,83,.10))}
+.recruit-summary-filter:hover{border-color:var(--gold)}
+@media(max-width:780px){.recruit-summary-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:360px){.recruit-summary-filter-grid{gap:8px}.recruit-summary-filter{padding:12px;min-height:76px}}

@@ -6,9 +6,9 @@ import {JSDOM,VirtualConsole} from 'jsdom';
 
 const base=Date.now(),day=86400000,tag=i=>'#P'+i.toString(2).padStart(9,'0').replaceAll('0','P').replaceAll('1','Q');
 const candidate=(i,age=1)=>({tag:tag(i),name:'Recruit '+i,townHallLevel:14,warStars:400,detectedAt:new Date(base-age*day).toISOString(),lastVerifiedAt:new Date(base).toISOString(),lifecycle:'STILL_CLANLESS'});
-const report={updatedAt:new Date(base).toISOString(),groups:{new:[candidate(0)],still:Array.from({length:204},(_,i)=>candidate(i+1)),joined_my:[candidate(400,8)],no_longer:[candidate(401,8),candidate(1)]}};
+const report={updatedAt:new Date(base).toISOString(),groups:{new:[candidate(0)],still:Array.from({length:204},(_,i)=>candidate(i+1)),joined_my:[candidate(400,8),candidate(403,1)],no_longer:[candidate(401,8),candidate(1)]}};
 report.groups.still.push(candidate(402,6.9));
-const shared=[{id:crypto.randomUUID(),player_tag:tag(0),invited:0,answered_at:new Date(base).toISOString(),actor_name:'Fixture'}],invited=new Set([tag(0)]);
+const shared=[{id:crypto.randomUUID(),player_tag:tag(0),invited:0,answered_at:new Date(base).toISOString(),actor_name:'Fixture'}],invited=new Set([tag(0),tag(403)]);
 let failReads=true,failSaves=false,readBatches=[];
 const wait=async check=>{for(let i=0;i<350;i++){if(check())return;await new Promise(r=>setTimeout(r,4));}throw Error('Recruit UI did not settle');};
 async function app(initial=report){
@@ -39,10 +39,27 @@ try{
  const {w,$}=a;
  await wait(()=>$('recruit-contact-status').textContent.includes('could not load'));
  assert.equal($('recruitment-results').querySelectorAll('.recruit-card').length,0,'Do not flash already invited cards before shared history loads');
- failReads=false;$('recruit-history-retry').click();await wait(()=>$('recruitment-results').querySelectorAll('.recruit-card').length===60);
- assert.ok(readBatches.length>=4);assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(0)+'"]'),null);
+ failReads=false;$('recruit-history-retry').click();await wait(()=>$('recruitment-count').textContent.includes('206 matching players')&&!$('recruitment-count').textContent.includes('Checking invitation history'));
+ assert.ok(readBatches.length>=4);
+ const shortcut=$('recruit-summary-cards');
+ assert.equal(shortcut.querySelectorAll('button[data-recruit-filter]').length,4,'Summary counts must act as filters');
+ for(const b of shortcut.querySelectorAll('button[data-recruit-filter]'))assert.equal(b.getAttribute('type'),'button');
+ shortcut.querySelector('[data-recruit-filter="new"]').focus();
+ shortcut.querySelector('[data-recruit-filter="new"]').click();
+ assert.equal(w.document.activeElement?.dataset?.recruitFilter,'new','Filtering preserves keyboard focus');
+ assert.equal($('recruit-summary-cards').querySelector('[data-recruit-filter="new"]').getAttribute('aria-pressed'),'true');
+ assert.match($('recruitment-count').textContent,/0 matching players/);
+ $('recruit-summary-cards').querySelector('[data-recruit-filter="available"]').click();
  assert.match($('recruitment-count').textContent,/205 matching players/);
- $('recruitment-results').querySelector('[data-recruit-more=still]').click();assert.equal($('recruitment-results').querySelectorAll('.recruit-card').length,120);
+ $('recruit-summary-cards').querySelector('[data-recruit-filter="joined"]').click();
+ assert.match($('recruitment-count').textContent,/1 matching player/);
+ assert.match($('recruitment-results').textContent,/Recruit 403/,'An invited player who joined must remain visible in joined history');
+ assert.ok($('recruitment-results').querySelector('details.recruit-section[open]'),'Joined filter automatically expands its results');
+ $('recruit-summary-cards').querySelector('[data-recruit-filter="ever"]').click();
+ assert.match($('recruitment-count').textContent,/all-time number is historical/);
+ $('recruit-reset').click();assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(0)+'"]'),null);
+ assert.match($('recruitment-count').textContent,/206 matching players/);
+ $('recruitment-results').querySelector('[data-recruit-more=still]').click();assert.ok($('recruitment-results').querySelectorAll('.recruit-card').length>=120);
  $('recruit-search').value='Recruit 204';$('recruit-search').dispatchEvent(new w.Event('input'));assert.match($('recruitment-results').textContent,/Recruit 204/);$('recruit-reset').click();
  const dismissButton=$('recruitment-results').querySelector('[data-recruit-dismiss="'+tag(3)+'"]');
  assert.ok(dismissButton,'The X is available on active candidate cards');
@@ -55,7 +72,7 @@ try{
  assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(3)+'"]'),null,'Dismissal instantly hides the card');
  assert.equal(w.eval('RecruitmentContacts.dismissed('+JSON.stringify(tag(3))+')'),true);
  assert.equal($('recruit-restore-dismissed').hidden,false,'A dismissal can be undone');
- assert.match($('recruitment-count').textContent,/204 matching players/);
+ assert.match($('recruitment-count').textContent,/205 matching players/);
  const visit=async i=>{const link=$('recruitment-results').querySelector('[data-recruit-open="'+tag(i)+'"]');assert.ok(link);link.addEventListener('click',e=>e.preventDefault(),{once:true});link.click();w.dispatchEvent(new w.Event('blur'));w.dispatchEvent(new w.Event('focus'));await wait(()=>$('recruit-invite-dialog')?.open);};
  await visit(1);$('recruit-invite-no').click();await wait(()=>!$('recruit-invite-dialog'));assert.ok($('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'));
  await visit(1);failSaves=true;$('recruit-invite-yes').click();await wait(()=>$('recruit-invite-status')?.textContent.includes('Could not save'));assert.ok($('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'),'A failed Yes keeps the card');
@@ -74,7 +91,7 @@ try{
  assert.equal(shared.filter(r=>r.player_tag===tag(1)).length,2);assert.deepEqual(a.errors,[]);
 }finally{await a.w.eval('RecruitmentContacts.load([])');a.dom.window.close();}
 a=await app();
-try{await wait(()=>a.$('recruitment-count').textContent.includes('203 matching players'));assert.equal(a.$('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'),null,'Fresh sign-in reads saved Yes before showing cards');assert.deepEqual(a.errors,[]);}finally{await a.w.eval('RecruitmentContacts.load([])');a.dom.window.close();}
+try{await wait(()=>a.$('recruitment-count').textContent.includes('204 matching players'));assert.equal(a.$('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'),null,'Fresh sign-in reads saved Yes before showing cards');assert.deepEqual(a.errors,[]);}finally{await a.w.eval('RecruitmentContacts.load([])');a.dom.window.close();}
 const css=readFileSync('recruitment_dashboard.css','utf8');
 assert.match(css,/\.recruit-dismiss\{[^}]*width:44px;[^}]*height:44px;/,'Remove button has a touch-sized target');
 assert.match(css,/@media\(max-width:640px\)/,'Responsive single-column layout remains available');
