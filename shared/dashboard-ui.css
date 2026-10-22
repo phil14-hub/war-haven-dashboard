@@ -224,3 +224,21 @@ html[data-theme=light] .hub-nav button[aria-current=page]{background:var(--selec
 .wh-chart .wh-donation-track svg{display:block;width:100%;height:10px;min-height:0;overflow:hidden}.wh-donation-track rect{fill:var(--gold)}
 
 .season-donation-scroll{max-height:520px;overflow:auto;width:100%;min-width:0;border:1px solid var(--line);border-radius:12px;overscroll-behavior:contain}
+
+/* Attendance notices share the name row, keeping every planner card compact. */
+.lineup-grid{grid-auto-rows:1fr}
+.lineup-player{grid-template-columns:22px minmax(0,1fr) auto 44px;grid-template-rows:44px auto auto;gap:6px;align-items:center;min-width:0;container-type:inline-size}
+.lineup-player>input[type=checkbox]{grid-column:1;grid-row:1/3;align-self:center}
+.lineup-player>label.lineup-identity{grid-column:2;grid-row:1;display:block;min-width:0;overflow:hidden}
+.lineup-player .player-name-with-hall{display:flex;align-items:center;gap:6px;min-width:0;min-height:44px;margin:0}
+.lineup-identity .player-name-with-hall>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lineup-player>.icon-button{grid-column:4;grid-row:1;min-width:44px;width:44px;height:44px}
+.lineup-player>small.lineup-availability{grid-column:2/-1;grid-row:2;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:1.4}
+.lineup-player>.lineup-evidence{grid-column:2/-1;grid-row:3;padding-left:0;min-width:0;min-height:37.6px;line-height:1.4;align-self:start}
+@container(min-width:440px){.lineup-player>.lineup-evidence{min-height:16.8px}}
+.lineup-player>button.lineup-warning{grid-column:3;grid-row:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;align-self:center;margin:0;min-width:44px;min-height:44px;height:44px;max-width:184px;width:auto;padding:6px 10px;text-align:center;font-size:11px;line-height:1.25;white-space:nowrap}
+.lineup-warning-symbol{display:inline-grid;place-items:center;flex:none;width:18px;height:18px;border:1.5px solid currentColor;border-radius:50%;font-size:13px;font-weight:800}
+.lineup-warning-text{display:none;min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media(min-width:1200px){.lineup-warning-text{display:inline}}
+.pending,.wh-account-section,.am-card{overflow-wrap:anywhere}
+.pending>.eyebrow,.am-card .tag{white-space:break-spaces}

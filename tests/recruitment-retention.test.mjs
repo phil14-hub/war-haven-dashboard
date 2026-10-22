@@ -54,7 +54,7 @@ try{
  assert.equal(shared.length,beforeDismiss,'Dismissing must not create a false invitation record');
  assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(3)+'"]'),null,'Dismissal instantly hides the card');
  assert.equal(w.eval('RecruitmentContacts.dismissed('+JSON.stringify(tag(3))+')'),true);
- assert.equal($('recruit-restore-dismissed').hidden,false,'A dismissal can be undone');
+ assert.equal($('recruit-restore-dismissed'),null,'Restore removed is absent after dismissal');
  assert.match($('recruitment-count').textContent,/204 matching players/);
  const visit=async i=>{const link=$('recruitment-results').querySelector('[data-recruit-open="'+tag(i)+'"]');assert.ok(link);link.addEventListener('click',e=>e.preventDefault(),{once:true});link.click();w.dispatchEvent(new w.Event('blur'));w.dispatchEvent(new w.Event('focus'));await wait(()=>$('recruit-invite-dialog')?.open);};
  await visit(1);$('recruit-invite-no').click();await wait(()=>!$('recruit-invite-dialog'));assert.ok($('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'));
@@ -66,10 +66,9 @@ try{
  assert.ok($('recruitment-results').querySelector('[data-recruit-open="'+tag(4)+'"]'),'A new scan retains yesterday’s candidates');
  assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(3)+'"]'),null,'Dismissals must survive a new scan');
  assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'),null);
- $('recruit-restore-dismissed').click();
- assert.equal($('recruit-restore-dismissed').hidden,true);
- assert.ok($('recruitment-results').querySelector('[data-recruit-open="'+tag(3)+'"]'),'Restore removed brings non-invited players back');
- assert.equal(shared.length,beforeDismiss+2,'Restore must not affect saved invitation history');
+ assert.equal($('recruit-restore-dismissed'),null,'The removed control is absent after a new scan');
+ assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(3)+'"]'),null,'Removed players stay hidden');
+ assert.equal(shared.length,beforeDismiss+2,'Removal never changes saved invitation history');
  a.advance(.2*day);w.eval('openRecruiter()');assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(402)+'"]'),null,'Verification never renews card age');
  assert.equal(shared.filter(r=>r.player_tag===tag(1)).length,2);assert.deepEqual(a.errors,[]);
 }finally{await a.w.eval('RecruitmentContacts.load([])');a.dom.window.close();}
@@ -79,4 +78,4 @@ const css=readFileSync('recruitment_dashboard.css','utf8');
 assert.match(css,/\.recruit-dismiss\{[^}]*width:44px;[^}]*height:44px;/,'Remove button has a touch-sized target');
 assert.match(css,/@media\(max-width:640px\)/,'Responsive single-column layout remains available');
 assert.match(css,/@media\(max-width:360px\)/,'Narrow phone layout remains available');
-console.log('Recruitment retention passed: one-tap X removal and restore without invitation records, mobile-sized target, seven-day retention, history gating, batching, Yes/No, failed saves and new scans.');
+console.log('Recruitment retention passed: one-tap X removal without a restore button or invitation records, mobile-sized target, seven-day retention, history gating, batching, Yes/No, failed saves and new scans.');
