@@ -6,9 +6,9 @@ import {JSDOM,VirtualConsole} from 'jsdom';
 
 const base=Date.now(),day=86400000,tag=i=>'#P'+i.toString(2).padStart(9,'0').replaceAll('0','P').replaceAll('1','Q');
 const candidate=(i,age=1)=>({tag:tag(i),name:'Recruit '+i,townHallLevel:14,warStars:400,detectedAt:new Date(base-age*day).toISOString(),lastVerifiedAt:new Date(base).toISOString(),lifecycle:'STILL_CLANLESS'});
-const report={updatedAt:new Date(base).toISOString(),groups:{new:[candidate(0)],still:Array.from({length:204},(_,i)=>candidate(i+1)),joined_my:[candidate(400,8)],no_longer:[candidate(401,8),candidate(1)]}};
+const report={updatedAt:new Date(base).toISOString(),groups:{new:[candidate(0)],still:Array.from({length:204},(_,i)=>candidate(i+1)),joined_my:[candidate(400,8),candidate(403,1)],no_longer:[candidate(401,8),candidate(1)]}};
 report.groups.still.push(candidate(402,6.9));
-const shared=[{id:crypto.randomUUID(),player_tag:tag(0),invited:0,answered_at:new Date(base).toISOString(),actor_name:'Fixture'}],invited=new Set([tag(0)]);
+const shared=[{id:crypto.randomUUID(),player_tag:tag(0),invited:0,answered_at:new Date(base).toISOString(),actor_name:'Fixture'}],invited=new Set([tag(0),tag(403)]);
 let failReads=true,failSaves=false,readBatches=[];
 const wait=async check=>{for(let i=0;i<350;i++){if(check())return;await new Promise(r=>setTimeout(r,4));}throw Error('Recruit UI did not settle');};
 async function app(initial=report){
@@ -52,11 +52,12 @@ try{
  $('recruit-summary-cards').querySelector('[data-recruit-filter="available"]').click();
  assert.match($('recruitment-count').textContent,/205 matching players/);
  $('recruit-summary-cards').querySelector('[data-recruit-filter="joined"]').click();
- assert.match($('recruitment-count').textContent,/0 matching players/);
+ assert.match($('recruitment-count').textContent,/1 matching player/);
+ assert.match($('recruitment-results').textContent,/Recruit 403/,'An invited player who joined must remain visible in joined history');
  $('recruit-summary-cards').querySelector('[data-recruit-filter="ever"]').click();
  assert.match($('recruitment-count').textContent,/all-time number is historical/);
  $('recruit-reset').click();assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(0)+'"]'),null);
- assert.match($('recruitment-count').textContent,/205 matching players/);
+ assert.match($('recruitment-count').textContent,/206 matching players/);
  $('recruitment-results').querySelector('[data-recruit-more=still]').click();assert.equal($('recruitment-results').querySelectorAll('.recruit-card').length,120);
  $('recruit-search').value='Recruit 204';$('recruit-search').dispatchEvent(new w.Event('input'));assert.match($('recruitment-results').textContent,/Recruit 204/);$('recruit-reset').click();
  const dismissButton=$('recruitment-results').querySelector('[data-recruit-dismiss="'+tag(3)+'"]');
@@ -70,7 +71,7 @@ try{
  assert.equal($('recruitment-results').querySelector('[data-recruit-open="'+tag(3)+'"]'),null,'Dismissal instantly hides the card');
  assert.equal(w.eval('RecruitmentContacts.dismissed('+JSON.stringify(tag(3))+')'),true);
  assert.equal($('recruit-restore-dismissed').hidden,false,'A dismissal can be undone');
- assert.match($('recruitment-count').textContent,/204 matching players/);
+ assert.match($('recruitment-count').textContent,/205 matching players/);
  const visit=async i=>{const link=$('recruitment-results').querySelector('[data-recruit-open="'+tag(i)+'"]');assert.ok(link);link.addEventListener('click',e=>e.preventDefault(),{once:true});link.click();w.dispatchEvent(new w.Event('blur'));w.dispatchEvent(new w.Event('focus'));await wait(()=>$('recruit-invite-dialog')?.open);};
  await visit(1);$('recruit-invite-no').click();await wait(()=>!$('recruit-invite-dialog'));assert.ok($('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'));
  await visit(1);failSaves=true;$('recruit-invite-yes').click();await wait(()=>$('recruit-invite-status')?.textContent.includes('Could not save'));assert.ok($('recruitment-results').querySelector('[data-recruit-open="'+tag(1)+'"]'),'A failed Yes keeps the card');
