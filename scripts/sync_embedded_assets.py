@@ -5,8 +5,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = {
+    'HTML_TEMPLATE': ('templates/dashboard.html',),
+    'LOCK_TEMPLATE': ('templates/lock.html',),
+    'TRACKER_JS': ('shared/dashboard-model.js',),
+    'EXTRA_JS': ('shared/dashboard-workspace.js',),
+    'DASHBOARD_UI_JS': ('shared/dashboard-render.js',),
+    'PASSWORD_JS': ('shared/password-tools.js',),
     'COMMON_UI_JS': ('shared/dashboard-ui.js',),
-    'CLEANUP_JS': ('shared/leadership-features.js', 'shared/leadership-workspace.js', 'shared/leader-session.js'),
+    'CLEANUP_JS': ('shared/leadership-features.js', 'shared/leadership-workspace.js', 'shared/leader-session.js', 'shared/war-history.js', 'shared/war-history-start.js'),
     'CLEANUP_CSS': ('shared/dashboard-ui.css',),
     'LEADER_CACHE_JS': ('shared/leader-cache.js',),
     'LIVE_DASHBOARD_JS': ('live_dashboard.js',),
@@ -19,6 +25,16 @@ ASSETS = {
 
 def synchronize(check=False):
     path = ROOT / 'Clash_War_Tracker.py'
+    template_path = ROOT / 'templates/dashboard.html'
+    if template_path.exists():
+        import re
+        html = template_path.read_text()
+        css = '/*ACCOUNT_MANAGEMENT_START*/'+(ROOT/'account_management.css').read_text()+'/*ACCOUNT_MANAGEMENT_END*/'
+        html = html.replace('__ACCOUNT_MANAGEMENT_CSS__', css)
+        html = re.sub(r'/\*ACCOUNT_MANAGEMENT_START\*/[\s\S]*?/\*ACCOUNT_MANAGEMENT_END\*/', lambda match: css, html)
+        if html != template_path.read_text():
+            if check: raise ValueError('Regenerate maintained account-management CSS')
+            template_path.write_text(html)
     source = path.read_text()
     lines = source.splitlines(keepends=True)
     changes = []
@@ -31,15 +47,6 @@ def synchronize(check=False):
         expected = '\n'.join((ROOT / file).read_text() for file in ASSETS[name])
         if ast.literal_eval(node.value) != expected:
             changes.append((node.lineno - 1, node.end_lineno, name, expected))
-    template=next(node for node in ast.parse(source).body if isinstance(node,ast.Assign) and isinstance(node.targets[0],ast.Name) and node.targets[0].id=='HTML_TEMPLATE')
-    html=ast.literal_eval(template.value)
-    if '__ACCOUNT_MANAGEMENT_CSS__' in html:
-        html=html.replace('__ACCOUNT_MANAGEMENT_CSS__','/*ACCOUNT_MANAGEMENT_START*/'+(ROOT/'account_management.css').read_text()+'/*ACCOUNT_MANAGEMENT_END*/')
-    else:
-        import re
-        html=re.sub(r'/\*ACCOUNT_MANAGEMENT_START\*/[\s\S]*?/\*ACCOUNT_MANAGEMENT_END\*/',lambda match:'/*ACCOUNT_MANAGEMENT_START*/'+(ROOT/'account_management.css').read_text()+'/*ACCOUNT_MANAGEMENT_END*/',html)
-    if html!=ast.literal_eval(template.value):
-        changes.append((template.lineno-1,template.end_lineno,'HTML_TEMPLATE',html))
     changes.sort()
     if check and changes:
         raise ValueError('Regenerate embedded assets: ' + ', '.join(c[2] for c in changes))

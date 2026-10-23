@@ -1,5 +1,17 @@
 # Maintenance record
 
+## Dashboard audit corrections
+
+- Preserve the owner's password entrance while retaining individual-account role checks.
+- Verify encrypted shared records before storage, isolate damaged records, and compare conflicting versions one item at a time.
+- Preserve account-bound planner drafts after session expiry, make sign-out choices explicit, and support large encrypted leadership drafts.
+- Use the corrected clock throughout upgrade planning, refresh incompatible player profiles, back off failed event checks, and align numeric goal completion.
+- Require authoritative war-end evidence before final results and recheck revised deadlines.
+- Add nonce-based script protection and frame blocking, hide unavailable announcement actions, retain usernames in audit history, and identify the signed-in leadership account.
+- Add phone planner shortcuts and clear partial-estimate coverage notices.
+- Compress encrypted dashboard HTML and reuse unchanged verified encrypted archives on the current providers without deleting history.
+- Maintain HTML and shared modules in canonical files, validate complete delivery hashes, and retain a versioned renderer plus an isolated legacy adapter.
+
 ## October 2026 reliability and role workflow cleanup
 
 - Validate roster counts/tags and final-war attack details before replacing published snapshots or calculating attendance. Check member projections before GitHub publication.

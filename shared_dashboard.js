@@ -12,7 +12,7 @@ const SharedDashboardSync=(()=>{
  const context=encoder.encode('WarHavenSharedEdit:v1');
  let keys=null,proof=null,proofUntil=0,loading=null,flushing=false,saveTimer=null,refreshKind='clan',refreshTimer=null;
  const requests=new Map(),completedRequests=new Set(),refreshRevisions=new Map();let submittingKind=null;
- let lastStatusCheck=0,needsRender=false;
+ let lastStatusCheck=0,needsRender=false,skippedRecords=0;
  async function cryptoKeys(){
   if(keys)return keys;const raw=decode(config.encryptionKey);if(raw.length!==64)throw Error('Shared editing configuration needs to be refreshed.');
   keys={enc:await crypto.subtle.importKey('raw',raw.slice(0,32),'AES-CBC',false,['encrypt','decrypt']),mac:await crypto.subtle.importKey('raw',raw.slice(32),{name:'HMAC',hash:'SHA-256'},false,['sign','verify'])};raw.fill(0);return keys;
@@ -38,8 +38,32 @@ const SharedDashboardSync=(()=>{
   if(!response.ok){const error=Error(response.status===401?'Reload and unlock the current dashboard to restore shared access.':result.error||'Shared saving is temporarily unavailable.');error.status=response.status;error.result=result;throw error;}
   return result;
  }
- function status(message){const el=$('shared-save-status');if(el)el.querySelector('[data-shared-message]').textContent=message;}
- function conflictControls(){const found=[...pending.values()].some(p=>p.conflict);$('shared-use-latest').hidden=!found;$('shared-keep-draft').hidden=!found;}
+ function status(message){const cacheWarning=LeaderCache.warning?.();if(skippedRecords)message+=' '+skippedRecords+' shared change'+(skippedRecords===1?' needs':'s need')+' repair. Other changes are available; your drafts are retained.';if(cacheWarning)message+=' '+cacheWarning;const el=$('shared-save-status');if(!el)return;el.querySelector('[data-shared-message]').textContent=message;el.hidden=!message||(!pending.size&&!skippedRecords&&!cacheWarning&&/up to date|Shared changes saved|Loaded the other leader/.test(message));conflictControls();}
+ function conflictControls(){const count=[...pending.values()].filter(p=>p.conflict).length,review=$('shared-use-latest');if(review){review.hidden=!count;review.textContent='Review '+count+' save conflict'+(count===1?'':'s');}$('shared-keep-draft').hidden=true;}
+ function conflictTitle(entry){const person=(data.roster||[]).find(p=>p.tag===entry.key),labels={notes:'Player note',lineupPlans:'Committed lineup',lineupDrafts:'Lineup draft',exceptions:'Attendance exception',manualWars:'War correction',xpCheckpoints:'Clan XP',villageProgress:'Village progress',flagResolutions:'Historical flag review'};return (labels[entry.category]||entry.category)+' · '+(person?person.name+' ('+entry.key+')':entry.key);}
+ async function reviewConflicts(){
+  const dialog=document.createElement('dialog');dialog.className='shared-conflict-dialog';dialog.setAttribute('aria-labelledby','shared-conflict-title');
+  const close=()=>{dialog.close();dialog.remove();$('shared-use-latest')?.focus();};dialog.oncancel=e=>{e.preventDefault();close();};
+  let selected=null;
+  const draw=async()=>{
+   const conflicts=[...pending].filter(([,entry])=>entry.conflict);if(!conflicts.length){close();return;}
+   if(!conflicts.some(([token])=>token===selected))selected=conflicts[0][0];
+   const entry=pending.get(selected),token=selected;dialog.replaceChildren();
+   const heading=document.createElement('h2');heading.id='shared-conflict-title';heading.textContent='Review shared changes';dialog.append(heading);
+   const label=document.createElement('label');label.textContent='Conflicting item';const select=document.createElement('select');for(const[key,value]of conflicts){const option=document.createElement('option');option.value=key;option.textContent=conflictTitle(value);option.selected=key===selected;select.append(option);}label.append(select);dialog.append(label);select.onchange=()=>{selected=select.value;void draw();};
+   const columns=document.createElement('div');columns.className='shared-conflict-columns';let remote;
+   try{remote=entry.remote?await decrypt(entry.remote.envelope):null;}catch{remote=null;}
+   if(!dialog.isConnected||selected!==token)return;
+   const describe=value=>entry.category==='notes'?String(value?.text||''):JSON.stringify(value,null,2);
+   for(const[title,value]of [['Your unsaved version',entry.value],['Saved version',remote?.value]]){const panel=document.createElement('section'),h=document.createElement('h3'),pre=document.createElement('pre');h.textContent=title;pre.textContent=value?describe(value):'No verified saved version is available.';panel.append(h,pre);columns.append(panel);}dialog.append(columns);
+   const message=document.createElement('p');message.setAttribute('role','status');message.textContent=entry.remote?.updatedAt?'Saved version updated '+date(entry.remote.updatedAt):'Choose which version to retain for this item.';dialog.append(message);
+   const actions=document.createElement('div');actions.className='row';const keep=document.createElement('button');keep.textContent='Keep reviewing later';keep.onclick=close;const use=document.createElement('button');use.textContent='Use saved version';use.disabled=!remote;const save=document.createElement('button');save.textContent='Save my version';actions.append(keep,use,save);dialog.append(actions);
+   use.onclick=async()=>{if(pending.get(token)!==entry){await draw();return;}pending.delete(token);keepDrafts();accept(entry.remote,remote);conflictControls();status('Loaded the saved version for '+conflictTitle(entry)+'.');await draw();};
+   save.onclick=async()=>{if(pending.get(token)!==entry){await draw();return;}save.disabled=true;use.disabled=true;entry.conflict=false;entry.baseRevision=entry.remote?.revision||null;entry.operationId=crypto.randomUUID();keepDrafts();await flush();conflictControls();if(pending.get(token)?.conflict)message.textContent='This item changed again. Review the newer saved version.';await draw();};
+  };
+  document.body.append(dialog);dialog.showModal();await draw();dialog.querySelector('select')?.focus();
+ }
+
  function accept(record,clear){
   if(['lineupPlans','lineupDrafts'].includes(clear.category))WarTracker.validateLineupPlans({[clear.category]:{[clear.key]:JSON.parse(JSON.stringify(clear.value))}});
   const token=clear.category+':'+clear.key;versions.set(record.id,record.revision);recordIds.set(token,record.id);
@@ -52,7 +76,11 @@ const SharedDashboardSync=(()=>{
  }
  async function load(){
   if(loading)return loading;
-  loading=(async()=>{let cursor=null;const visited=new Set(),records=[];do{const result=await api('/v1/records',cursor?{cursor}:{});if(!Array.isArray(result.records))throw Error('Shared records could not be read completely.');records.push(...result.records);cursor=result.nextCursor||null;if(cursor&&visited.has(cursor))throw Error('Shared record pagination failed. Your draft is retained.');if(cursor)visited.add(cursor);}while(cursor);for(const record of records){const clear=await decrypt(record.envelope);if(record.id!==await identifier(clear.category,clear.key))throw Error('A shared record failed identity verification.');accept(record,clear);}if(needsRender){needsRender=false;const draft=WarHavenUI.captureDraft(document.body),player=$('player-dialog')?.open?selectedTag:null;render();if(player)openPlayer(player);WarHavenUI.restoreDraft(document.body,draft);}if(!pending.size)status('Shared leadership edits are up to date.');})().finally(()=>loading=null);
+  loading=(async()=>{let cursor=null,skipped=0;const visited=new Set(),records=[];do{const result=await api('/v1/records',cursor?{cursor}:{});if(!Array.isArray(result.records))throw Error('Shared records could not be read completely.');records.push(...result.records);skipped+=Number(result.skippedRecords)||0;cursor=result.nextCursor||null;if(cursor&&visited.has(cursor))throw Error('Shared record pagination failed. Your draft is retained.');if(cursor)visited.add(cursor);}while(cursor);
+   for(const record of records){try{const clear=await decrypt(record.envelope);if(record.kind!==clear.category||record.id!==await identifier(clear.category,clear.key))throw Error('Shared identity verification failed.');accept(record,clear);}catch{skipped++;}}
+   if(needsRender){needsRender=false;const draft=WarHavenUI.captureDraft(document.body),player=$('player-dialog')?.open?selectedTag:null;render();if(player)openPlayer(player);WarHavenUI.restoreDraft(document.body,draft);}
+   skippedRecords=skipped;if(!pending.size)status('Shared leadership edits are up to date.');else if(skipped)status('Shared changes loaded.');
+  })().finally(()=>loading=null);
   return loading;
  }
  function changed(category,key,value){
@@ -80,7 +108,7 @@ const SharedDashboardSync=(()=>{
     }
    }
    if(!pending.size)status('Shared changes saved.');
-  }catch(error){status(error.message+' Your draft is saved on this device.');}
+  }catch(error){status(error.message+(LeaderCache.warning?.()?' Your draft remains in this open tab.':' Your draft is saved on this device.'));}
   finally{flushing=false;if([...pending.values()].some(p=>!p.conflict)){clearTimeout(saveTimer);saveTimer=setTimeout(flush,5000);}}
  }
  function seedDrafts(){
@@ -103,12 +131,12 @@ const SharedDashboardSync=(()=>{
   const busy=Boolean(request&&['pending','running'].includes(request.status));
   button.classList.toggle('is-refreshing',busy);button.setAttribute('aria-busy',String(busy));
   const label=button.querySelector('[data-refresh-label]');
-  if(label)label.textContent=busy?(request.status==='pending'?'Update queued':'Refreshing…'):(kind==='clan'?'Refresh data':'Refresh recruiting candidates');
+  if(label)label.textContent=busy?(request.status==='pending'?'Working':'Loading'):(kind==='clan'?'Refresh data':'Refresh recruiting candidates');
  }
- function refreshButton(busy,accepted=false){
+ function refreshButton(busy,accepted=false,state=null){
   const button=$('website-update-submit');if(!button)return;
   button.disabled=busy;button.setAttribute('aria-busy',String(busy));
-  if(busy){button.dataset.keepDisabled='1';button.innerHTML='<span class="working-spinner" aria-hidden="true"></span>Working';}
+  if(busy){button.dataset.keepDisabled='1';button.innerHTML='<span class="working-spinner" aria-hidden="true"></span>'+(state==='running'?'Loading':'Working');}
   else{delete button.dataset.keepDisabled;button.textContent=refreshKind==='recruitment'?'Start recruitment scan':'Start clan update';}
   const notice=$('website-update-background');if(notice)notice.hidden=!accepted;
  }
@@ -129,7 +157,7 @@ const SharedDashboardSync=(()=>{
  async function refreshStatus(kind=refreshKind){
   const revision=refreshRevisions.get(kind)||0;try{const request=(await api('/v1/refresh/status',{kind})).request;if((refreshRevisions.get(kind)||0)!==revision||submittingKind===kind)return;if(request)requests.set(kind,request);else requests.delete(kind);
    setBusy(kind,request);
-   if(kind===refreshKind){updateProgress(request);const busy=Boolean(request&&['pending','running'].includes(request.status));refreshButton(busy,busy);}
+   if(kind===refreshKind){updateProgress(request);const busy=Boolean(request&&['pending','running'].includes(request.status));refreshButton(busy,busy,request?.status);}
    const completedKey=kind+':'+request?.id;
    if(request?.status==='completed'&&!completedRequests.has(completedKey)){
     await checkPublishedUpdate({force:true});
@@ -141,7 +169,7 @@ const SharedDashboardSync=(()=>{
   refreshKind=kind;const recruitment=kind==='recruitment';
   $('refresh-title').textContent=recruitment?'Refresh recruitment':'Update clan dashboard';
   $('shared-update-description').textContent=recruitment?'Scan tracked clans and verify recruiting candidates. This does not refresh clan wars, members or Capital data.':'Collect clan, war, member and Capital data. This does not scan recruiting candidates.';
-  const saved=requests.get(kind),busy=Boolean(saved&&['pending','running'].includes(saved.status));refreshButton(busy,busy);
+  const saved=requests.get(kind),busy=Boolean(saved&&['pending','running'].includes(saved.status));refreshButton(busy,busy,saved?.status);
   $('website-update-error').textContent='';updateProgress(saved);
   $('refresh-snapshot').textContent='Last successful '+(recruitment?'recruitment scan: '+date(recruiterReport.updatedAt):'clan snapshot: '+date(data.lastSuccessfulSync));
   $('automated-refresh-status').textContent='';
@@ -150,7 +178,7 @@ const SharedDashboardSync=(()=>{
  function wireRefresh(){
   const form=$('website-update-form');
   form.innerHTML='<p id="shared-update-description" class="small muted"></p><button id="website-update-submit" class="primary full-width" type="submit">Start clan update</button><p id="website-update-background" class="notice" role="status" hidden>Your update is running in the cloud. You can close this tab and it will keep running. New data appears automatically if you keep the dashboard open.</p><div class="shared-update-meter"><div id="shared-update-label" role="status">Ready to start</div><progress id="shared-update-bar" value="0" max="100" aria-label="Estimated update progress"></progress><p id="shared-update-estimate" class="small muted"></p></div>';
-  form.onsubmit=async event=>{event.preventDefault();if(submittingKind)return;const kind=refreshKind;submittingKind=kind;refreshRevisions.set(kind,(refreshRevisions.get(kind)||0)+1);$('website-update-error').textContent='';refreshButton(true,false);try{const result=await api('/v1/refresh/request',{kind});requests.set(kind,result.request);refreshRevisions.set(kind,(refreshRevisions.get(kind)||0)+1);setBusy(kind,result.request);if(kind===refreshKind){updateProgress(result.request);const busy=['pending','running'].includes(result.request.status);refreshButton(busy,busy);}}catch(error){$('website-update-error').textContent=error.message;if(kind===refreshKind)refreshButton(false,false);}finally{submittingKind=null;}};
+  form.onsubmit=async event=>{event.preventDefault();if(submittingKind)return;const kind=refreshKind;submittingKind=kind;refreshRevisions.set(kind,(refreshRevisions.get(kind)||0)+1);$('website-update-error').textContent='';refreshButton(true,false);try{const result=await api('/v1/refresh/request',{kind});requests.set(kind,result.request);refreshRevisions.set(kind,(refreshRevisions.get(kind)||0)+1);setBusy(kind,result.request);if(kind===refreshKind){updateProgress(result.request);const busy=['pending','running'].includes(result.request.status);refreshButton(busy,busy,result.request?.status);}}catch(error){$('website-update-error').textContent=error.message;if(kind===refreshKind)refreshButton(false,false);}finally{submittingKind=null;}};
   $('refresh-data').onclick=()=>showRefresh('clan');$('refresh-recruiter').onclick=()=>showRefresh('recruitment');$('settings-refresh').onclick=()=>{$('settings-dialog').close();showRefresh('clan');};
   // These controls supersede the owner-token flow after the shared service is available.
   $('refresh-dialog').querySelectorAll('[data-legacy-update]').forEach(node=>node.hidden=true);
@@ -166,12 +194,13 @@ const SharedDashboardSync=(()=>{
  async function start(){
   if(!enabled)return;await LeaderCache.ready();try{for(const[token,entry]of LeaderCache.get(pendingStorage)||[])if(categories.includes(entry.category)&&typeof entry.key==='string'&&entry.value)pending.set(token,entry);}catch{}
   for(const category of categories)for(const[key,value]of Object.entries(edits[category]||{}))known.set(category+':'+key,JSON.stringify(value));
-  const banner=document.createElement('div');banner.id='shared-save-status';banner.className='notice';banner.setAttribute('role','status');banner.innerHTML='<span data-shared-message>Loading shared leadership edits…</span> <button id="shared-use-latest" hidden>Load their change</button> <button id="shared-keep-draft" hidden>Save my draft</button>';
+  const banner=document.createElement('div');banner.id='shared-save-status';banner.hidden=true;banner.className='notice';banner.setAttribute('role','status');banner.innerHTML='<span data-shared-message>Loading shared leadership edits…</span> <button id="shared-use-latest" hidden>Load their change</button> <button id="shared-keep-draft" hidden>Save my draft</button>';
   $('overview').parentElement.prepend(banner);
+  window.addEventListener?.('war-haven:draft-storage-error',event=>{status(event.detail);const field=$('player-notes');if(field&&!$('private-note-storage-error')){const notice=document.createElement('p');notice.id='private-note-storage-error';notice.className='notice';notice.setAttribute('role','alert');notice.textContent=event.detail;field.after(notice);}});
   $('howto-saving').textContent='Leadership edits save automatically for every leader using this dashboard. Working lineup drafts are separate from committed lineups. Wait for Shared changes saved before closing. If two leaders edit the same item, your draft is kept and you can load their change or save yours. Offline drafts stay on this device and retry when connected. Captured history can still be exported with Management → Export private backup.';
   $('shared-storage-info').textContent='Leadership edits save automatically and sync between leaders. Attendance exceptions, completed-war corrections, XP checkpoints, reviewed flags and imports are included.';
-  $('shared-use-latest').onclick=async()=>{const found=[...pending].find(([,v])=>v.conflict);if(!found)return;const[token,entry]=found;pending.delete(token);keepDrafts();if(entry.remote)accept(entry.remote,await decrypt(entry.remote.envelope));conflictControls();status('Loaded the other leader’s saved change.');};
-  $('shared-keep-draft').onclick=()=>{const entry=[...pending.values()].find(v=>v.conflict);if(!entry)return;if(entry.remote){versions.set(entry.remote.id,entry.remote.revision);entry.baseRevision=entry.remote.revision;}entry.conflict=false;entry.remote=null;entry.operationId=crypto.randomUUID();keepDrafts();conflictControls();flush();};
+  $('shared-use-latest').onclick=()=>reviewConflicts().catch(error=>status(error.message+' Your draft is retained.'));
+  $('shared-keep-draft').onclick=()=>reviewConflicts().catch(error=>status(error.message+' Your draft is retained.'));
   document.addEventListener('input',event=>{if(event.target.id!=='player-notes'||!selectedTag)return;const value={text:event.target.value.slice(0,6000),updatedAt:new Date().toISOString()};edits.notes[selectedTag]=value;persist();changed('notes',selectedTag,value);});
   document.addEventListener('change',event=>{if(event.target.matches('[data-lineup-player],#planner-mode,#planner-size,#planner-balance,#planner-unknown'))lineupChanged();});
   document.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(['planner-suggest','planner-save'].includes(button.id))lineupChanged();if(button.id==='save-note'&&selectedTag&&edits.notes[selectedTag])changed('notes',selectedTag,edits.notes[selectedTag]);});

@@ -2,7 +2,7 @@
 const LeaderCache=(()=>{
  const memory=new Map(),versions=new Map(),pending=new Set();let key=null,ready=Promise.resolve(),warning='',locked=false;
  const enc=new TextEncoder(),dec=new TextDecoder();
- const b64=v=>btoa(String.fromCharCode(...v)),raw=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+ const b64=v=>{let text='';for(let i=0;i<v.length;i+=8192)text+=String.fromCharCode(...v.subarray(i,i+8192));return btoa(text);},raw=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
  const prefix='war-haven-private:v1:';
  async function init(data){ready=(async()=>{
   if(!data.sharedActions?.encryptionKey){warning='Private browser storage is unavailable. Export unfinished work before closing.';return;}
@@ -14,7 +14,7 @@ const LeaderCache=(()=>{
   }
  })().catch(()=>{warning='Private storage could not be opened. Export unfinished work before closing.';});return ready;}
  async function save(name,value){if(!key)return;const n=(versions.get(name)||0)+1;versions.set(name,n);const iv=crypto.getRandomValues(new Uint8Array(12)),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:enc.encode(name)},key,enc.encode(JSON.stringify(value)));if(versions.get(name)===n)localStorage.setItem(prefix+name,JSON.stringify({v:1,iv:b64(iv),cipher:b64(new Uint8Array(cipher))}));}
- function set(name,value){if(locked)return;memory.set(name,JSON.parse(JSON.stringify(value)));const task=ready.then(()=>save(name,value)).catch(()=>warning='Private drafts could not be saved. Keep this page open or export a backup.');pending.add(task);task.finally(()=>pending.delete(task));}
+ function set(name,value){if(locked)return;memory.set(name,JSON.parse(JSON.stringify(value)));const task=ready.then(()=>save(name,value)).catch(()=>{warning='Private drafts could not be saved. Keep this page open or export a backup.';if(typeof window!=='undefined'&&typeof CustomEvent==='function')window.dispatchEvent(new CustomEvent('war-haven:draft-storage-error',{detail:warning}));});pending.add(task);task.finally(()=>pending.delete(task));}
  async function lock(){locked=true;await ready;await Promise.allSettled([...pending]);memory.clear();key=null;}
  function clearLegacy(){for(let i=localStorage.length-1;i>=0;i--){const name=localStorage.key(i);if(name?.startsWith('clash-war-tracker-edits:')||name?.startsWith('war-haven-pending-shared:'))localStorage.removeItem(name);}}
  return {init,ready:()=>ready,get:name=>memory.get(name),set,warning:()=>warning,clearLegacy,lock};

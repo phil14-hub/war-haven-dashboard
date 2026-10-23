@@ -38,7 +38,7 @@ const app=vm.runInNewContext(source+';SharedDashboardSync',context);
  app.changed('notes','#P0Y',{text:'Pending snapshot draft'});
  const merged=app.mergeSnapshotEdits({notes:{'#P0Y':{text:'Published value'}}});assert.equal(merged.notes['#P0Y'].text,'Pending snapshot draft');app.pending.clear();
  refreshRequests.clan={id:'clan-run',status:'running',startedAt:'2030-01-01T00:00:00Z'};await app.refreshStatus('clan');
- assert.equal(node('refresh-data').classes.has('is-refreshing'),true);assert.equal(node('refresh-data').attrs['aria-busy'],'true');assert.equal(node('refresh-data[data-refresh-label]').textContent,'Refreshing…');assert.equal(node('refresh-recruiter').classes.has('is-refreshing'),false);
+ assert.equal(node('refresh-data').classes.has('is-refreshing'),true);assert.equal(node('refresh-data').attrs['aria-busy'],'true');assert.equal(node('refresh-data[data-refresh-label]').textContent,'Loading');assert.equal(node('refresh-recruiter').classes.has('is-refreshing'),false);
  refreshRequests.recruitment={id:'recruit-run',status:'pending'};await app.refreshStatus('recruitment');assert.equal(node('refresh-recruiter').classes.has('is-refreshing'),true);
  refreshRequests.clan.status='completed';await app.refreshStatus('clan');assert.equal(node('refresh-data').classes.has('is-refreshing'),false);assert.equal(node('refresh-recruiter').classes.has('is-refreshing'),true);assert.equal(publicationChecks,1);
  await app.refreshStatus('clan');assert.equal(publicationChecks,1);

@@ -10,8 +10,10 @@ on:
       - '**.mjs'
       - '**.cjs'
       - '**.json'
+      - '!data/war_tracker_state.enc.json'
       - '.github/workflows/**'
       - 'shared/**'
+      - 'templates/**'
       - 'tests/**'
   workflow_dispatch:
 permissions:

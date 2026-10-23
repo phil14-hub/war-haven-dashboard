@@ -20,6 +20,15 @@ def iso(value):
     return value.astimezone(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
 
 
+def capture_satisfies(war, watch, now):
+    """A final check needs fresh, complete API evidence after its actual deadline."""
+    ended, observed, due = timestamp(war.get('endTime')), timestamp(war.get('observedAt')), timestamp(watch.get('dueAt'))
+    return bool(war.get('source') == 'API' and war.get('state') == 'warEnded'
+                and war.get('final') is True and war.get('rosterComplete') is True
+                and ended == timestamp(watch.get('endTime')) and observed and due
+                and due <= observed <= now)
+
+
 def plan(state, now=None):
     """Preserve completed checks and arm recently observed API wars only.
 
@@ -48,8 +57,10 @@ def plan(state, now=None):
             watch = watches[war['id']] = {'endTime': iso(ended), 'dueAt': iso(due)}
         # A manual/daily scan after the target already satisfies the final check.
         observed = timestamp(war.get('observedAt'))
-        if war.get('final') and observed and observed >= due:
+        if capture_satisfies(war, watch, now):
             watch['completedAt'] = watch.get('completedAt') or iso(observed)
+        else:
+            watch.pop('completedAt', None)
     for watch in watches.values():
         ended = timestamp(watch['endTime'])
         if not watch.get('completedAt') and now > ended + RETRY_WINDOW:
@@ -82,8 +93,8 @@ def record_update(state, now=None):
             continue
         watch['lastAttemptAt'] = iso(now)
         war = wars.get(key, {})
-        if war.get('final') and war.get('rosterComplete'):
-            watch['completedAt'] = iso(now)
+        if capture_satisfies(war, watch, now):
+            watch['completedAt'] = iso(timestamp(war['observedAt']))
     state.setdefault('automaticUpdates', {})['postWar'] = schedule
     state['automaticUpdates']['postWar'] = plan(state, now)
     return state['automaticUpdates']['postWar']

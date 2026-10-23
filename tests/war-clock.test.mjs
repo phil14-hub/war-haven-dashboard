@@ -26,8 +26,10 @@ try{
  const row=w.WarTracker.playersFor({wars:[old],roster:[{tag:'#P0Q',name:'Late attacker'}],policyStart:new Date(base-3*86400000).toISOString()}, {}, base)[0];
  assert.equal(row.uncertain,true);assert.equal(row.played,0);assert.equal(row.kick,false);assert.deepEqual(Array.from(row.gaps),['old-incomplete']);
  w.eval('data.wars.push('+JSON.stringify(old)+');renderCurrent();tickWarClocks()');assert.equal(w.document.querySelectorAll('[data-war-clock]').length,1);
- assert.equal(w.WarTracker.warTiming({...war,state:'warEnded'},base).label,'War ended');
- assert.equal(w.WarTracker.warTiming({...war,final:true},base).label,'War ended');
+ assert.equal(w.WarTracker.warTiming({...war,state:'warEnded'},base).label,'In progress');
+ assert.equal(w.WarTracker.warTiming({...war,state:'warEnded',endTime:new Date(base-1000).toISOString()},base).label,'War ended');
+ assert.equal(w.WarTracker.warTiming({...war,final:true},base).label,'In progress');
+ assert.equal(w.WarTracker.isClosed({...war,final:true},base),false);
  assert.deepEqual(errors,[]);
  console.log('War clock passed: server clock, 30-minute device skew, device time changes, offline sync, stale deadline, corrected time and API-only ended confirmation.');
 }finally{w.close();}

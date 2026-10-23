@@ -6,6 +6,7 @@ on:
     paths:
       - Clash_War_Tracker.py
       - shared/**
+      - templates/**
       - shared_dashboard.js
       - live_dashboard.js
       - member_accounts.js

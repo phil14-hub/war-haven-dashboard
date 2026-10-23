@@ -1,6 +1,6 @@
 # War Haven
 
-The member portal is [portal.warhavenclan.com/members/](https://portal.warhavenclan.com/members/). Individual accounts provide private member dashboards and role-based leadership tools. The encrypted GitHub Pages dashboard remains available for shared access and recovery. Website permissions and Clash roles are separate.
+The member portal is [portal.warhavenclan.com/members/](https://portal.warhavenclan.com/members/). Individual accounts provide private member dashboards and role-based leadership tools. The encrypted GitHub Pages password entrance remains available as the owner's backup. Website permissions and Clash roles are separate.
 
 ## Start here
 
@@ -18,12 +18,17 @@ The collector restores and merges the encrypted archive before changing publishe
 | --- | --- |
 | `Clash_War_Tracker.py` | Portable Pyto/desktop collector and embedded dashboard |
 | `shared/`, `member_accounts.js`, other browser sources | Canonical dashboard UI and shared features |
+| `templates/` | Maintained dashboard and unlock HTML templates |
 | `scripts/sync_embedded_assets.py` | Regenerates portable fallbacks; `--check` detects drift |
 | `index.html` | Published encrypted dashboard |
 | `data/war_tracker_state.enc.json` | Complete encrypted archive |
 | `.github/workflows/` | Collection, final capture, source verification and portal delivery |
 
 The separate Sites source owns member authentication, permissions, notifications and database migrations. Its immutable publication generations use one atomic pointer. Repeated delivery of the same publication reuses that generation. Maintenance removes only old generated delivery copies after seven days, retaining the current and previous generations. Encrypted archives, shared records, war evidence and applied migrations are preserved.
+
+Generated leadership HTML is compressed before authenticated encryption. Unlocking supports both historical uncompressed pages and new compressed pages; the latter require a browser with gzip decompression support. An unchanged full archive reuses its verified encrypted blob, while changed state or password rotation creates fresh encryption. This reduces future storage growth and transfer size on the existing providers. It does not move data, remove history, or shrink existing Git history.
+
+Edit the maintained templates and shared modules, then run `python scripts/sync_embedded_assets.py`. Synchronize the portal with `python scripts/sync_assets.py /absolute/path/to/portal`; its build checks the complete canonical asset manifest. Renderer version 2 uses named asset slots and record identifiers. Older publications remain supported through a separate compatibility adapter.
 
 ## Development checks
 

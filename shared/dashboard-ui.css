@@ -242,3 +242,5 @@ html[data-theme=light] .hub-nav button[aria-current=page]{background:var(--selec
 @media(min-width:1200px){.lineup-warning-text{display:inline}}
 .pending,.wh-account-section,.am-card{overflow-wrap:anywhere}
 .pending>.eyebrow,.am-card .tag{white-space:break-spaces}
+
+.shared-conflict-dialog{width:min(900px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;box-sizing:border-box}.shared-conflict-dialog select{max-width:100%;width:100%;min-height:44px}.shared-conflict-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.shared-conflict-columns pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;background:var(--bg);padding:12px;border:1px solid var(--line);border-radius:10px;max-height:45vh;overflow:auto}.shared-conflict-dialog .row{display:flex;flex-wrap:wrap;gap:8px}.shared-conflict-dialog button{min-height:44px}@media(max-width:650px){.shared-conflict-columns{grid-template-columns:minmax(0,1fr)}}

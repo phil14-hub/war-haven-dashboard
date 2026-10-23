@@ -101,7 +101,7 @@ def prepare(state):
     key = current.get('encryptionKey')
     if key is not None and len(base64.b64decode(key, validate=True)) != 64:
         raise SharedActionsError('The shared editing key is invalid.')
-    state['sharedActions'] = {'version': 1, 'url': BACKEND_URL, 'enabled': True,
+    state['sharedActions'] = {'skippedRecords': current.get('skippedRecords', 0), 'version': 1, 'url': BACKEND_URL, 'enabled': True,
                               'encryptionKey': key or base64.b64encode(secrets.token_bytes(64)).decode()}
     return True
 
@@ -123,36 +123,44 @@ def pull(state, client, tracker):
             raise SharedActionsError('Shared record pagination failed. Existing edits were retained.')
         visited.add(cursor)
     edits = {k: {} for k in ('notes', 'lineupPlans', 'lineupDrafts', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions')}
+    skipped = 0
     for record in result.get('records', []):
-        clear = decrypt_record(record['envelope'], state['sharedActions']['encryptionKey'], tracker)
-        category, key, value = clear['category'], clear.get('key'), clear.get('value')
-        if not isinstance(key, str) or not isinstance(value, dict) or category != record.get('kind'):
-            raise SharedActionsError('Invalid shared record.')
-        expected_id = hmac.new(base64.b64decode(state['sharedActions']['encryptionKey'])[32:], (category + ':' + key).encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(record['id'], expected_id):
-            raise SharedActionsError('A shared record failed identity verification.')
-        if value.get('deleted') is True:
-            edits[category][key] = {'deleted': True, 'updatedAt': record['updatedAt']}
+        try:
+            clear = decrypt_record(record['envelope'], state['sharedActions']['encryptionKey'], tracker)
+            category, key, value = clear['category'], clear.get('key'), clear.get('value')
+            if not isinstance(key, str) or not isinstance(value, dict) or category != record.get('kind'):
+                raise SharedActionsError('Invalid shared record.')
+            expected_id = hmac.new(base64.b64decode(state['sharedActions']['encryptionKey'])[32:], (category + ':' + key).encode(), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(record['id'], expected_id):
+                raise SharedActionsError('A shared record failed identity verification.')
+            if value.get('deleted') is True:
+                edits[category][key] = {'deleted': True, 'updatedAt': record['updatedAt']}
+                continue
+            if category == 'exceptions' and (not isinstance(value.get('value'), bool) or len(key) > 200):
+                raise SharedActionsError('Invalid attendance exception.')
+            if category == 'notes' and (tracker.normalize_tag(key) != key or not isinstance(value.get('text'), str) or len(value['text']) > 6000):
+                raise SharedActionsError('Invalid shared note.')
+            if category in ('lineupPlans','lineupDrafts'):
+                checked={category:{key:value}}
+                tracker.validate_lineup_edits(checked)
+                for collection in ('lineupPlans','lineupDrafts'):
+                    for mode,plan in checked.get(collection,{}).items():
+                        previous=edits[collection].get(mode)
+                        if not previous or str(record['updatedAt'])>=str(previous.get('updatedAt','')):
+                            edits[collection][mode]={**plan,'updatedAt':record['updatedAt']}
+                continue
+            if category == 'manualWars':
+                tracker.apply_snapshot(tracker.new_state(state['clanTag']), {'clanTag': state['clanTag'], 'edits': {'manualWars': {key: value}}})
+            if category in ('xpCheckpoints', 'villageProgress', 'flagResolutions') and (len(key)>200 or len(json.dumps(value))>64000):
+                raise SharedActionsError('Invalid shared edit.')
+            # The service timestamp resolves updates independently of device clocks.
+            edits[category][key] = {**value, 'updatedAt': record['updatedAt']}
+        except (SharedActionsError, ValueError, KeyError, TypeError, IndexError):
+            skipped += 1
             continue
-        if category == 'exceptions' and (not isinstance(value.get('value'), bool) or len(key) > 200):
-            raise SharedActionsError('Invalid attendance exception.')
-        if category == 'notes' and (tracker.normalize_tag(key) != key or not isinstance(value.get('text'), str) or len(value['text']) > 6000):
-            raise SharedActionsError('Invalid shared note.')
-        if category in ('lineupPlans','lineupDrafts'):
-            checked={category:{key:value}}
-            tracker.validate_lineup_edits(checked)
-            for collection in ('lineupPlans','lineupDrafts'):
-                for mode,plan in checked.get(collection,{}).items():
-                    previous=edits[collection].get(mode)
-                    if not previous or str(record['updatedAt'])>=str(previous.get('updatedAt','')):
-                        edits[collection][mode]={**plan,'updatedAt':record['updatedAt']}
-            continue
-        if category == 'manualWars':
-            tracker.apply_snapshot(tracker.new_state(state['clanTag']), {'clanTag': state['clanTag'], 'edits': {'manualWars': {key: value}}})
-        if category in ('xpCheckpoints', 'villageProgress', 'flagResolutions') and (len(key)>200 or len(json.dumps(value))>64000):
-            raise SharedActionsError('Invalid shared edit.')
-        # The service timestamp resolves updates independently of device clocks.
-        edits[category][key] = {**value, 'updatedAt': record['updatedAt']}
+    state['sharedActions']['skippedRecords'] = skipped
+    if skipped:
+        print('::warning::' + str(skipped) + ' shared records need repair. Valid changes were applied; existing edits for skipped records were retained.')
     merged = tracker.merge_edits(state.get('edits'), {})
     for category in ('notes', 'lineupPlans', 'lineupDrafts', 'exceptions', 'manualWars', 'xpCheckpoints', 'villageProgress', 'flagResolutions'):
         merged[category].update(edits[category])

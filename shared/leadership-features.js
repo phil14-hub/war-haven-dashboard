@@ -9,7 +9,7 @@ async function memberFeatureRequest(path,body,method='POST'){
  if(location.origin!==memberService&&window.warHavenSession?.proof){if(!featureProof||Date.now()>featureProofUntil){const r=await fetch(memberService+'/v1/challenge',{method:'POST',headers,body:'{}',cache:'no-store'});if(!r.ok)throw Error('Account service unavailable.');const c=await r.json();featureProof=await window.warHavenSession.proof(c.salt,c.rounds);featureProofUntil=Date.now()+60000;}headers['X-War-Haven-Proof']=featureProof;}
  const response=await fetch(memberService+'/members/api/'+path,{method,headers,...(method==='POST'?{body:JSON.stringify(body||{})}:{}),cache:'no-store',credentials:'same-origin'}),value=await response.json();if(!response.ok)throw Object.assign(Error(value.error||'Account service unavailable.'),{status:response.status});return value;
 }
-async function loadSharedPreferences(){try{const result=await memberFeatureRequest('preferences/clan',{read:true});if($('shared-display-form')?.dataset.dirty){$('settings-storage').textContent='Saved settings loaded. Your unsaved choices remain in this form.';sharedPreferencesLoaded=true;return;}sharedPreferenceVersion=result.version;preferences={...preferences,...result.preferences};sharedPreferencesLoaded=true;applyPreferences();renderPreservingDrafts();tickWarClocks();const form=$('shared-display-form');if(form&&!form.dataset.dirty){const fields=document.createElement('div');fields.innerHTML=WarHavenUI.settingsFields(preferences);form.querySelectorAll('.wh-settings-grid,.small.muted').forEach(n=>n.remove());form.prepend(fields);};$('settings-storage').textContent='Display settings are shared with all leaders and co-leaders.';}catch(e){$('settings-storage').textContent='Could not load shared settings: '+e.message;}}
+async function loadSharedPreferences(){try{const result=await memberFeatureRequest('preferences/clan',{read:true});if($('shared-display-form')?.dataset.dirty){$('settings-storage').textContent='Saved settings loaded. Your unsaved choices remain in this form.';sharedPreferencesLoaded=true;return;}sharedPreferenceVersion=result.version;preferences={...preferences,...result.preferences};sharedPreferencesLoaded=true;applyPreferences();renderPreservingDrafts();tickWarClocks();const form=$('shared-display-form');if(form&&!form.dataset.dirty){const fields=document.createElement('div');fields.innerHTML=WarHavenUI.settingsFields(preferences);form.querySelectorAll(':scope > div,:scope > p.small.muted').forEach(n=>n.remove());form.prepend(fields);};$('settings-storage').textContent='Display settings are shared with all leaders and co-leaders.';}catch(e){$('settings-storage').textContent='Could not load shared settings: '+e.message;}}
 async function persistSharedPreferences(){
  if(!sharedPreferencesLoaded){$('settings-storage').textContent='Shared settings have not loaded. Try opening Settings again.';return;}
  if(sharedPreferenceSaving){sharedPreferenceDirty=true;return;}
@@ -17,7 +17,7 @@ async function persistSharedPreferences(){
  try{const result=await memberFeatureRequest('preferences/clan',{version:sharedPreferenceVersion,preferences});sharedPreferenceVersion=result.version;if($('shared-display-form'))delete $('shared-display-form').dataset.dirty;$('settings-storage').textContent='Saved for all leaders and co-leaders.';}catch(e){$('settings-storage').textContent=e.message;if(e.status===409)toast('Another leader changed settings. Your draft is preserved. Reopen Settings to load the latest version.');}finally{sharedPreferenceSaving=false;if(sharedPreferenceDirty){sharedPreferenceDirty=false;persistSharedPreferences();}}
 }
 async function startCleanupFeatures(){
- const dialog=$('settings-dialog');dialog.querySelector('.dialog-head').insertAdjacentHTML('afterend','<p class="notice">Display settings apply to the shared leadership dashboard. Your personal player dashboard has separate settings.</p><form id="shared-display-form">'+WarHavenUI.settingsFields(preferences)+'<button class="primary">Save shared display settings</button><button type="button" id="reload-shared-settings">Reload saved settings</button></form><div class="wh-form-actions"><a class="button" href="'+memberService+'/members/?settings=1">My account & linked villages</a></div>');
+ const dialog=$('settings-dialog');dialog.querySelector('.dialog-head').insertAdjacentHTML('afterend','<p class="notice">Shared leadership settings. Personal settings are separate.</p><form id="shared-display-form">'+WarHavenUI.settingsFields(preferences)+'<button class="primary">Save display</button><button type="button" id="reload-shared-settings">Reload saved settings</button></form><div class="wh-form-actions"><a class="button" href="'+memberService+'/members/?settings=1">My account & linked villages</a></div>');
  $('reload-shared-settings').onclick=()=>{delete $('shared-display-form').dataset.dirty;loadSharedPreferences();};
  $('shared-display-form').addEventListener('input',()=>{$('shared-display-form').dataset.dirty='1';});
  $('shared-display-form').onsubmit=async e=>{e.preventDefault();try{preferences={...preferences,...WarHavenUI.readSettings(e.target)};applyPreferences();renderPreservingDrafts();tickWarClocks();await persistSharedPreferences();}catch(error){$('settings-storage').textContent=error.message;}};
@@ -31,57 +31,9 @@ async function startCleanupFeatures(){
 }
 async function loadSharedPreferencesIfChanged(){try{const r=await memberFeatureRequest('preferences/clan',{read:true});if(r.version!==sharedPreferenceVersion){sharedPreferenceVersion=r.version;preferences={...preferences,...r.preferences};applyPreferences();renderPreservingDrafts();tickWarClocks();}}catch{}}
 let leadershipNotifications=[];
-async function refreshLeadershipNotifications(){try{leadershipNotifications=(await memberFeatureRequest('notifications',null,'GET')).notifications;const count=leadershipNotifications.filter(n=>!n.read_at).length;const b=$('leadership-bell');b.innerHTML=WarHavenUI.bell+(count?'<span class="wh-unread">'+(count>99?'99+':count)+'</span>':'');b.setAttribute('aria-label',count+' unread notifications');}catch{}}
+async function refreshLeadershipNotifications(){try{leadershipNotifications=(await memberFeatureRequest('notifications?scope=leadership',null,'GET')).notifications;const count=leadershipNotifications.filter(n=>!n.read_at).length;const b=$('leadership-bell');b.innerHTML=WarHavenUI.bell+(count?'<span class="wh-unread">'+(count>99?'99+':count)+'</span>':'');b.setAttribute('aria-label',count+' unread notifications');}catch{}}
 async function openLeadershipNotifications(){
  let dialog=$('leadership-notifications');if(!dialog){dialog=document.createElement('dialog');dialog.id='leadership-notifications';dialog.setAttribute('aria-label','Leadership notifications');dialog.className='wh-notifications';document.body.append(dialog);}
- try{await memberFeatureRequest('notifications',null,'GET');await refreshLeadershipNotifications();dialog.innerHTML='<div class="between"><h2>Notifications</h2><button id="close-leadership-news" aria-label="Close notifications">×</button></div><button id="mark-leadership-news" '+(leadershipNotifications.some(n=>!n.read_at)?'':'hidden')+'>Mark all as read</button>'+leadershipNotifications.map(n=>'<button class="wh-notification '+(n.read_at?'':'unread')+'" data-leadership-news="'+esc(n.id)+'"><b>'+esc(n.title)+'</b><small>'+esc(date(n.created_at))+(n.action==='clan-xp'?' · Open Clan XP entry':['village-link','account-review'].includes(n.action)?' · Open approval action list':'')+'</small></button>').join('')+(leadershipNotifications.length?'':'<p class="notice">You’re all caught up. Clan announcements appear here.</p>');$('mark-leadership-news').onclick=async()=>{try{await memberFeatureRequest('notifications',{all:true});await refreshLeadershipNotifications();dialog.close();openLeadershipNotifications();}catch(e){toast(e.message);}};dialog.querySelectorAll('[data-leadership-news]').forEach(b=>b.onclick=async()=>{try{await memberFeatureRequest('notifications',{id:b.dataset.leadershipNews});await refreshLeadershipNotifications();const n=leadershipNotifications.find(n=>n.id===b.dataset.leadershipNews);if(['village-link','account-review'].includes(n?.action)){dialog.close();await MemberAccounts.openRequest(n.requestId);return;}if(n?.action==='clan-xp'){dialog.close();openClanXpEntry();return;}dialog.innerHTML='<div class="between"><h2>Clan news</h2><button id="close-leadership-news" aria-label="Close announcement">×</button></div><small>'+esc(date(n.created_at))+'</small><h3>'+esc(n.title)+'</h3><p class="news-body">'+esc(n.body).replace(/\n/g,'<br>')+'</p>';$('close-leadership-news').onclick=()=>dialog.close();}catch(e){toast(e.message);}});}catch{dialog.innerHTML='<div class="between"><h2>Notifications</h2><button id="close-leadership-news" aria-label="Close notifications">×</button></div><p>Sign in with your individual account to see your notifications and read status.</p><a class="button" href="'+memberService+'/members/?portal=leader">Leadership sign in</a>';}
+ try{await memberFeatureRequest('notifications?scope=leadership',null,'GET');await refreshLeadershipNotifications();dialog.innerHTML='<div class="between"><h2>Notifications</h2><button id="close-leadership-news" aria-label="Close notifications">×</button></div><button id="mark-leadership-news" '+(leadershipNotifications.some(n=>!n.read_at)?'':'hidden')+'>Mark all as read</button>'+leadershipNotifications.map(n=>'<button class="wh-notification '+(n.read_at?'':'unread')+'" data-leadership-news="'+esc(n.id)+'"><b>'+esc(n.title)+'</b><small>'+esc(date(n.created_at))+(n.action==='clan-xp'?' · Open Clan XP entry':['village-link','account-review'].includes(n.action)?' · Open approval action list':'')+'</small></button>').join('')+(leadershipNotifications.length?'':'<p class="notice">You’re all caught up. Clan announcements appear here.</p>');$('mark-leadership-news').onclick=async()=>{try{await memberFeatureRequest('notifications?scope=leadership',{all:true});await refreshLeadershipNotifications();dialog.close();openLeadershipNotifications();}catch(e){toast(e.message);}};dialog.querySelectorAll('[data-leadership-news]').forEach(b=>b.onclick=async()=>{try{await memberFeatureRequest('notifications?scope=leadership',{id:b.dataset.leadershipNews});await refreshLeadershipNotifications();const n=leadershipNotifications.find(n=>n.id===b.dataset.leadershipNews);if(['village-link','account-review'].includes(n?.action)){dialog.close();await MemberAccounts.openRequest(n.requestId);return;}if(n?.action==='clan-xp'){dialog.close();openClanXpEntry();return;}dialog.innerHTML='<div class="between"><h2>Clan news</h2><button id="close-leadership-news" aria-label="Close announcement">×</button></div><small>'+esc(date(n.created_at))+'</small><h3>'+esc(n.title)+'</h3><p class="news-body">'+esc(n.body).replace(/\n/g,'<br>')+'</p>';$('close-leadership-news').onclick=()=>dialog.close();}catch(e){toast(e.message);}});}catch{dialog.innerHTML='<div class="between"><h2>Notifications</h2><button id="close-leadership-news" aria-label="Close notifications">×</button></div><p>Sign in with your individual account to see your notifications and read status.</p><a class="button" href="'+memberService+'/members/?portal=leader">Leadership sign in</a>';}
  $('close-leadership-news').onclick=()=>dialog.close();if(!dialog.open)dialog.showModal();
 }
-
-;(function installWarHistory(){
- 'use strict';
- if(globalThis.WarHavenWarHistory?.version===1)return;
- const labels={win:'Victory',victory:'Victory',lose:'Defeat',loss:'Defeat',defeat:'Defeat',tie:'Tie',draw:'Tie'};
- const score=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
- function outcome(w,asOf=Date.now()){
-  const recorded=labels[String(w.result||'').toLowerCase()];
-  const final=w.state==='warEnded'||w.final===true||Boolean(recorded&&!['preparation','inWar'].includes(w.state));
-  if(!final)return {label:Date.parse(w.endTime)<=asOf?'Awaiting final result':null,code:'pending'};
-  if(recorded)return {label:recorded,code:recorded.toLowerCase()};
-  if(score(w.stars)&&score(w.opponentStars)){
-   if(w.stars!==w.opponentStars)return w.stars>w.opponentStars?{label:'Victory',code:'victory'}:{label:'Defeat',code:'defeat'};
-   if(score(w.destruction)&&w.destruction<=100&&score(w.opponentDestruction)&&w.opponentDestruction<=100){
-    return w.destruction>w.opponentDestruction?{label:'Victory',code:'victory'}:w.destruction<w.opponentDestruction?{label:'Defeat',code:'defeat'}:{label:'Tie',code:'tie'};
-   }
-  }
-  return {label:'Awaiting final result',code:'pending'};
- }
- function decorate(){
-  const list=document.getElementById('history-list');
-  if(!list||typeof WarTracker==='undefined'||typeof data==='undefined'||typeof edits==='undefined')return;
-  const kind=document.getElementById('war-kind')?.value;
-  const wars=WarTracker.warsFor(data,edits).filter(w=>!kind||w.kind===kind).reverse();
-  [...list.querySelectorAll(':scope > .history-card')].forEach((card,index)=>{
-   const war=wars[index],heading=card.querySelector('.war-heading');if(!war||!heading)return;
-   card.dataset.warId=war.id;
-   const result=outcome(war);if(!result.label)return;
-   let group=heading.querySelector('.history-result-badges');
-   if(!group){group=document.createElement('div');group.className='history-result-badges';for(const pill of [...heading.children].filter(n=>n.classList.contains('pill')))group.append(pill);heading.append(group);}
-   let pill=group.querySelector('[data-war-result]');
-   if(!pill){pill=document.createElement('span');pill.dataset.warResult='';group.prepend(pill);}
-   pill.className='pill war-result '+result.code;pill.textContent=result.label;pill.setAttribute('aria-label','War result: '+result.label);
-  });
- }
- function install(){
-  if(typeof renderHistory!=='function'||renderHistory.warResultsInstalled)return;
-  const original=renderHistory;
-  renderHistory=function(...args){const result=original.apply(this,args);decorate();return result;};
-  renderHistory.warResultsInstalled=true;decorate();
- }
- if(!document.getElementById('war-history-result-styles')){
-  const style=document.createElement('style');style.id='war-history-result-styles';
-  style.textContent='.history-result-badges{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}.history-result-badges .war-result{border:1px solid currentColor}.war-result.victory{background:#245645;color:#a2e5c3}.war-result.defeat{background:#713c47;color:#ffb8bf}.war-result.tie{background:#254765;color:#b6d8f4}.war-result.pending{background:#685130;color:#f5d29c}html[data-theme=light] .war-result.victory{background:var(--success-bg);color:var(--green);border-color:var(--success-line)}html[data-theme=light] .war-result.defeat{background:var(--danger-bg);color:var(--red);border-color:var(--danger-line)}html[data-theme=light] .war-result.tie{background:var(--info-bg);color:var(--blue);border-color:var(--info-line)}html[data-theme=light] .war-result.pending{background:var(--warning-bg);color:var(--amber);border-color:var(--warning-line)}';
-  document.head.append(style);
- }
- globalThis.WarHavenWarHistory={version:1,outcome,install};install();
-})();

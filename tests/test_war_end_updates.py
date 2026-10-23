@@ -87,7 +87,7 @@ class TimingTests(unittest.TestCase):
         tracker.store_war(state, tracker.normalize_war(raw, clan))
         self.assertEqual(len(state['wars']), 1)
         final = state['wars'][0]
-        self.assertTrue(final['final'])
+        self.assertFalse(final['final'])
         self.assertEqual(final['participants'][0]['attacksUsed'], 1)
         self.assertEqual(final['participants'][0]['starsEarned'], 3)
 
@@ -126,7 +126,7 @@ class TimingTests(unittest.TestCase):
         self.assertNotIn('completedAt', schedule['watches']['Regular:fixture'])
 
     def test_successful_final_check_completes_once(self):
-        state = fixture(final=True, observed=NOW + timedelta(minutes=1))
+        state = fixture(final=True, observed=NOW + timedelta(minutes=5))
         schedule = timing.record_update(state, NOW + timedelta(minutes=5))
         self.assertIn('completedAt', schedule['watches']['Regular:fixture'])
         self.assertIsNone(timing.next_update(state, NOW + timedelta(minutes=8)))

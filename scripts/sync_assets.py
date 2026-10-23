@@ -1,14 +1,38 @@
-"""Generate portal upgrade assets from this repository's canonical game catalog."""
+"""Generate and verify portal copies from the dashboard's maintained assets."""
 from pathlib import Path
 import argparse, ast, hashlib, json
-root=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[1]
+COPIES={
+ 'upgrade_catalog.json':'worker/upgrade-catalog.json',
+ 'shared/upgrade-model.js':'public/upgrade-model.js',
+ 'shared/dashboard-ui.js':'public/dashboard-ui.js',
+ 'shared/dashboard-ui.css':'public/dashboard-ui.css',
+ 'member_accounts.js':'public/account-management.js',
+ 'recruitment_contacts.js':'public/recruitment-contacts.js',
+ 'recruitment_dashboard.js':'public/recruitment-dashboard.js',
+ 'recruitment_dashboard.css':'public/recruitment-dashboard.css',
+ 'shared/leader-cache.js':'public/leader-cache.js',
+ 'shared_dashboard.js':'public/shared-dashboard.js',
+ 'shared/password-tools.js':'public/password-tools.js',
+}
+def synchronize(portal,check=False):
+ assets={target:(ROOT/source).read_bytes() for source,target in COPIES.items()}
+ names=[u['name'] for u in json.loads(assets['worker/upgrade-catalog.json'])['units']]
+ if len(names)!=len(set(names)):raise ValueError('Duplicate named army upgrades')
+ module=ast.parse((ROOT/'Clash_War_Tracker.py').read_text())
+ assets['public/password-sodium.js']=next(ast.literal_eval(n.value).encode() for n in module.body if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='SODIUM_JS')
+ assets['worker/war-history-core.js']=b'export '+(ROOT/'shared/war-history.js').read_bytes()
+ hashes={name:hashlib.sha256(value).hexdigest() for name,value in assets.items()}
+ manifest={'source':'phil14-hub/war-haven-dashboard','version':2,'files':hashes,'catalogSha256':hashes['worker/upgrade-catalog.json'],'modelSha256':hashes['public/upgrade-model.js'],'sodiumSha256':hashes['public/password-sodium.js']}
+ assets['canonical-assets.json']=(json.dumps(manifest,indent=2)+'\n').encode()
+ drift=[name for name,value in assets.items() if not (portal/name).exists() or (portal/name).read_bytes()!=value]
+ if check and drift:raise ValueError('Regenerate canonical portal assets: '+', '.join(drift))
+ if not check:
+  for name,value in assets.items():
+   path=portal/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(value)
+ return drift
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('portal',type=Path);args=parser.parse_args()
-    catalog=(root/'upgrade_catalog.json').read_bytes();model=(root/'shared/upgrade-model.js').read_bytes()
-    names=[u['name'] for u in json.loads(catalog)['units']]
-    if len(names)!=len(set(names)):raise SystemExit('Duplicate named army upgrades')
-    (args.portal/'worker/upgrade-catalog.json').write_bytes(catalog);(args.portal/'public/upgrade-model.js').write_bytes(model)
-    module=ast.parse((root/'Clash_War_Tracker.py').read_text())
-    sodium=next(ast.literal_eval(node.value) for node in module.body if isinstance(node,ast.Assign) and isinstance(node.targets[0],ast.Name) and node.targets[0].id=='SODIUM_JS').encode()
-    (args.portal/'public/password-sodium.js').write_bytes(sodium)
-    (args.portal/'canonical-assets.json').write_text(json.dumps({'catalogSha256':hashlib.sha256(catalog).hexdigest(),'modelSha256':hashlib.sha256(model).hexdigest(),'sodiumSha256':hashlib.sha256(sodium).hexdigest(),'source':'phil14-hub/war-haven-dashboard'},indent=2)+'\n')
+ parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('portal',type=Path);parser.add_argument('--check',action='store_true');args=parser.parse_args()
+ try:synchronize(args.portal,args.check)
+ except ValueError as error:parser.exit(1,str(error)+'\n')
+ print('Canonical portal assets verified.' if args.check else 'Canonical portal assets generated.')

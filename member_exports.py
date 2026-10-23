@@ -18,7 +18,11 @@ def count(value):
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def war_outcome(war):
+def war_outcome(war, as_of=None):
+    as_of = as_of or datetime.now(timezone.utc).timestamp()
+    ended, observed = stamp(war.get("endTime")), stamp(war.get("observedAt"))
+    if ended > as_of or war.get("source") == "API" and (not war.get("final") or not war.get("rosterComplete") or not observed or observed < ended):
+        return None
     if war.get('state') != 'warEnded' and war.get('final') is not True:
         return None
     recorded = {'win':'Victory','victory':'Victory','lose':'Defeat','loss':'Defeat','defeat':'Defeat','tie':'Tie','draw':'Tie'}.get(str(war.get('result', '')).lower())
@@ -120,7 +124,7 @@ def build_snapshot(state, tracker):
                              'startTime': war.get('startTime'), 'endTime': war.get('endTime'), 'state': war.get('state'), 'final': final,
                              'used': used if count(used) else None, 'allowed': allowed if count(allowed) else None,
                              'stars': participant.get('starsEarned') if count(participant.get('starsEarned')) else (0 if used == 0 else None),
-                             'outcome': war_outcome(war)})
+                             'outcome': war_outcome(war,stamp(at))})
             if not final:
                 continue
             stats['appearances'] += 1

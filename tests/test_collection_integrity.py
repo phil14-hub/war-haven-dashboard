@@ -39,7 +39,7 @@ class CollectionIntegrityTests(unittest.TestCase):
                 self.assertEqual(state,before)
 
     def war(self):
-        return {'state':'warEnded','endTime':'20300101T120000.000Z','teamSize':2,'attacksPerMember':2,
+        return {'state':'warEnded','endTime':'20200101T120000.000Z','teamSize':2,'attacksPerMember':2,
                 'clan':{'tag':tracker.DEFAULT_CLAN_TAG,'attacks':2,'stars':6,'members':[{'tag':'#P0Y'},{'tag':'#P0Q'}]},
                 'opponent':{'tag':'#P0R','name':'Synthetic opponent'}}
 
