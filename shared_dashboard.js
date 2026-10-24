@@ -1,9 +1,15 @@
 const SharedDashboardSync=(()=>{
  const config=data.sharedActions,enabled=Boolean(config?.enabled&&window.warHavenSession?.proof);
- const pending=new Map(),versions=new Map(),recordIds=new Map();
- const pendingStorage='war-haven-pending-shared:'+data.clanTag;
+ const pending=new Map(),recovered=new Map(),versions=new Map(),recordIds=new Map(),baseValues=new Map();
+ const pendingStorage='war-haven-pending-shared:'+data.clanTag,recoveryStorage='war-haven-recovered-shared:'+data.clanTag;
  const categories=['notes','lineupPlans','lineupDrafts','exceptions','manualWars','xpCheckpoints','villageProgress','flagResolutions'],known=new Map();
- function keepDrafts(){LeaderCache.set(pendingStorage,[...pending]);}
+ function keepDrafts(){LeaderCache.set(pendingStorage,[...pending]);LeaderCache.set(recoveryStorage,[...recovered]);}
+ // Compare content independently of transport timestamps and object key order.
+ function content(value){if(Array.isArray(value))return value.map(content);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(key=>[key,content(value[key])]));return value;}
+ const comparable=value=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.entries(value).filter(([key])=>key!=='updatedAt')):value;
+ const same=(a,b)=>JSON.stringify(content(comparable(a)))===JSON.stringify(content(comparable(b)));
+ function reviewEntries(){return new Map([...[...pending].filter(([,entry])=>entry.conflict),...[...recovered].filter(([token])=>!pending.get(token)?.conflict)]);}
+ function conflictMessage(){return 'Some shared items changed since this draft was created. Your draft is kept.';}
 
  const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true});
  const decode=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
@@ -38,28 +44,28 @@ const SharedDashboardSync=(()=>{
   if(!response.ok){const error=Error(response.status===401?'Reload and unlock the current dashboard to restore shared access.':result.error||'Shared saving is temporarily unavailable.');error.status=response.status;error.result=result;throw error;}
   return result;
  }
- function status(message){const cacheWarning=LeaderCache.warning?.();if(skippedRecords)message+=' '+skippedRecords+' shared change'+(skippedRecords===1?' needs':'s need')+' repair. Other changes are available; your drafts are retained.';if(cacheWarning)message+=' '+cacheWarning;const el=$('shared-save-status');if(!el)return;el.querySelector('[data-shared-message]').textContent=message;el.hidden=!message||(!pending.size&&!skippedRecords&&!cacheWarning&&/up to date|Shared changes saved|Loaded the other leader/.test(message));conflictControls();}
- function conflictControls(){const count=[...pending.values()].filter(p=>p.conflict).length,review=$('shared-use-latest');if(review){review.hidden=!count;review.textContent='Review '+count+' save conflict'+(count===1?'':'s');}$('shared-keep-draft').hidden=true;}
+ function status(message){const cacheWarning=LeaderCache.warning?.();if(recovered.size)message+=' Older browser copies are available for review.';if(skippedRecords)message+=' '+skippedRecords+' shared change'+(skippedRecords===1?' needs':'s need')+' repair. Other changes are available; your drafts are retained.';if(cacheWarning)message+=' '+cacheWarning;const el=$('shared-save-status');if(!el)return;el.querySelector('[data-shared-message]').textContent=message;el.hidden=!message||(!pending.size&&!recovered.size&&!skippedRecords&&!cacheWarning&&/up to date|Shared changes saved|Loaded the other leader/.test(message));conflictControls();}
+ function conflictControls(){const count=[...pending.values()].filter(p=>p.conflict).length,review=$('shared-use-latest');if(review){review.hidden=!count&&!recovered.size;review.textContent=count?'Review '+count+' save conflict'+(count===1?'':'s'):'Review '+recovered.size+' older browser cop'+(recovered.size===1?'y':'ies');}$('shared-keep-draft').hidden=true;}
  function conflictTitle(entry){const person=(data.roster||[]).find(p=>p.tag===entry.key),labels={notes:'Player note',lineupPlans:'Committed lineup',lineupDrafts:'Lineup draft',exceptions:'Attendance exception',manualWars:'War correction',xpCheckpoints:'Clan XP',villageProgress:'Village progress',flagResolutions:'Historical flag review'};return (labels[entry.category]||entry.category)+' · '+(person?person.name+' ('+entry.key+')':entry.key);}
  async function reviewConflicts(){
   const dialog=document.createElement('dialog');dialog.className='shared-conflict-dialog';dialog.setAttribute('aria-labelledby','shared-conflict-title');
   const close=()=>{dialog.close();dialog.remove();$('shared-use-latest')?.focus();};dialog.oncancel=e=>{e.preventDefault();close();};
   let selected=null;
   const draw=async()=>{
-   const conflicts=[...pending].filter(([,entry])=>entry.conflict);if(!conflicts.length){close();return;}
+   const conflicts=[...reviewEntries()];if(!conflicts.length){close();return;}
    if(!conflicts.some(([token])=>token===selected))selected=conflicts[0][0];
-   const entry=pending.get(selected),token=selected;dialog.replaceChildren();
-   const heading=document.createElement('h2');heading.id='shared-conflict-title';heading.textContent='Review shared changes';dialog.append(heading);
-   const label=document.createElement('label');label.textContent='Conflicting item';const select=document.createElement('select');for(const[key,value]of conflicts){const option=document.createElement('option');option.value=key;option.textContent=conflictTitle(value);option.selected=key===selected;select.append(option);}label.append(select);dialog.append(label);select.onchange=()=>{selected=select.value;void draw();};
-   const columns=document.createElement('div');columns.className='shared-conflict-columns';let remote;
-   try{remote=entry.remote?await decrypt(entry.remote.envelope):null;}catch{remote=null;}
+   const entry=reviewEntries().get(selected),token=selected;dialog.replaceChildren();
+   const heading=document.createElement('h2');heading.id='shared-conflict-title';heading.textContent=recovered.get(token)===entry?'Review older browser copy':'Review shared changes';dialog.append(heading);
+   const label=document.createElement('label');label.textContent=recovered.get(token)===entry?'Older browser copy':'Conflicting item';const select=document.createElement('select');for(const[key,value]of conflicts){const option=document.createElement('option');option.value=key;option.textContent=conflictTitle(value);option.selected=key===selected;select.append(option);}label.append(select);dialog.append(label);select.onchange=()=>{selected=select.value;void draw();};
+   const columns=document.createElement('div');columns.className='shared-conflict-columns';const remoteRecord=entry.remote;let remote;
+   try{remote=remoteRecord?await decrypt(remoteRecord.envelope):null;}catch{remote=null;}
    if(!dialog.isConnected||selected!==token)return;
    const describe=value=>entry.category==='notes'?String(value?.text||''):JSON.stringify(value,null,2);
-   for(const[title,value]of [['Your unsaved version',entry.value],['Saved version',remote?.value]]){const panel=document.createElement('section'),h=document.createElement('h3'),pre=document.createElement('pre');h.textContent=title;pre.textContent=value?describe(value):'No verified saved version is available.';panel.append(h,pre);columns.append(panel);}dialog.append(columns);
-   const message=document.createElement('p');message.setAttribute('role','status');message.textContent=entry.remote?.updatedAt?'Saved version updated '+date(entry.remote.updatedAt):'Choose which version to retain for this item.';dialog.append(message);
+   for(const[title,value]of [[recovered.get(token)===entry?'Older browser copy':'Your unsaved version',entry.value],['Saved version',remote?.value]]){const panel=document.createElement('section'),h=document.createElement('h3'),pre=document.createElement('pre');h.textContent=title;pre.textContent=value?describe(value):'No verified saved version is available.';panel.append(h,pre);columns.append(panel);}dialog.append(columns);
+   const message=document.createElement('p');message.setAttribute('role','status');message.textContent=recovered.get(token)===entry?'This older browser copy was kept for recovery. The saved version is already in use.':entry.remote?.updatedAt?'Saved version updated '+date(entry.remote.updatedAt):'Choose which version to retain for this item.';dialog.append(message);
    const actions=document.createElement('div');actions.className='row';const keep=document.createElement('button');keep.textContent='Keep reviewing later';keep.onclick=close;const use=document.createElement('button');use.textContent='Use saved version';use.disabled=!remote;const save=document.createElement('button');save.textContent='Save my version';actions.append(keep,use,save);dialog.append(actions);
-   use.onclick=async()=>{if(pending.get(token)!==entry){await draw();return;}pending.delete(token);keepDrafts();accept(entry.remote,remote);conflictControls();status('Loaded the saved version for '+conflictTitle(entry)+'.');await draw();};
-   save.onclick=async()=>{if(pending.get(token)!==entry){await draw();return;}save.disabled=true;use.disabled=true;entry.conflict=false;entry.baseRevision=entry.remote?.revision||null;entry.operationId=crypto.randomUUID();keepDrafts();await flush();conflictControls();if(pending.get(token)?.conflict)message.textContent='This item changed again. Review the newer saved version.';await draw();};
+   use.onclick=async()=>{if(reviewEntries().get(token)!==entry||entry.remote?.revision!==remoteRecord?.revision){await draw();return;}pending.delete(token);recovered.delete(token);keepDrafts();accept(remoteRecord,remote);conflictControls();status('Loaded the saved version for '+conflictTitle(entry)+'.');await draw();};
+   save.onclick=async()=>{if(reviewEntries().get(token)!==entry||entry.remote?.revision!==remoteRecord?.revision){await draw();return;}save.disabled=true;use.disabled=true;recovered.delete(token);pending.set(token,entry);edits[entry.category]||={};edits[entry.category][entry.key]=JSON.parse(JSON.stringify(entry.value));persist();entry.migration=false;entry.conflict=false;entry.baseValue=remote?.value;entry.baseRevision=remoteRecord?.revision||null;entry.operationId=crypto.randomUUID();keepDrafts();await flush();conflictControls();if(pending.get(token)?.conflict)message.textContent='This item changed again. Review the newer saved version.';await draw();};
   };
   document.body.append(dialog);dialog.showModal();await draw();dialog.querySelector('select')?.focus();
  }
@@ -67,8 +73,19 @@ const SharedDashboardSync=(()=>{
  function accept(record,clear){
   if(['lineupPlans','lineupDrafts'].includes(clear.category))WarTracker.validateLineupPlans({[clear.category]:{[clear.key]:JSON.parse(JSON.stringify(clear.value))}});
   const token=clear.category+':'+clear.key;versions.set(record.id,record.revision);recordIds.set(token,record.id);
+  baseValues.set(token,JSON.parse(JSON.stringify(clear.value)));
   const draft=pending.get(token);
-  if(draft?.migration&&JSON.stringify({...draft.value,updatedAt:null})===JSON.stringify({...clear.value,updatedAt:null})){pending.delete(token);keepDrafts();}
+  if(draft){
+   if(same(draft.value,clear.value)||(Object.hasOwn(draft,'baseValue')&&same(draft.value,draft.baseValue))){pending.delete(token);keepDrafts();}
+   else if(draft.migration){
+    // Older clients inferred these drafts from cached copies, without a user edit.
+    // Preserve them separately while displaying the authoritative shared record.
+    recovered.set(token,{...draft,remote:record,conflict:false});pending.delete(token);keepDrafts();
+   }else if(Object.hasOwn(draft,'baseValue')&&same(draft.baseValue,clear.value)){
+    draft.baseRevision=record.revision;draft.conflict=false;draft.remote=record;keepDrafts();
+   }else if(draft.baseRevision!==record.revision){draft.conflict=true;draft.remote=record;keepDrafts();status(conflictMessage());}
+  }
+  if(recovered.has(token)&&recovered.get(token).remote?.revision!==record.revision){recovered.get(token).remote=record;keepDrafts();}
   if(pending.has(token))return;if(JSON.stringify(edits[clear.category]?.[clear.key])===JSON.stringify({...clear.value,updatedAt:record.updatedAt}))return;
   edits[clear.category]||={};known.set(token,JSON.stringify({...clear.value,updatedAt:record.updatedAt}));edits[clear.category][clear.key]={...clear.value,updatedAt:record.updatedAt};if(['lineupPlans','lineupDrafts'].includes(clear.category))edits=WarTracker.mergeEdits(edits,{});needsRender=true;persist();
   if(clear.category==='notes'&&selectedTag===clear.key&&$('player-dialog').open&&$('player-notes').value!==(clear.value.text||''))$('player-notes').value=clear.value.text||'';
@@ -87,7 +104,8 @@ const SharedDashboardSync=(()=>{
   if(!enabled)return;
   const token=category+':'+key;
   const previous=pending.get(token),id=recordIds.get(token);
-  pending.set(token,{category,key,value:JSON.parse(JSON.stringify(value)),baseRevision:previous?previous.baseRevision:(versions.get(id)||null),operationId:crypto.randomUUID()});keepDrafts();
+  const baseValue=previous?previous.baseValue:baseValues.get(token);
+  pending.set(token,{category,key,value:JSON.parse(JSON.stringify(value)),...(previous?.conflict?{conflict:true,remote:previous.remote}:{}),...(baseValue===undefined?{}:{baseValue:JSON.parse(JSON.stringify(baseValue))}),baseRevision:previous?previous.baseRevision:(versions.get(id)||null),operationId:crypto.randomUUID()});keepDrafts();
   status('Saving shared changes…');clearTimeout(saveTimer);saveTimer=setTimeout(flush,700);
  }
  async function flush(){
@@ -100,10 +118,10 @@ const SharedDashboardSync=(()=>{
     entry.envelope||=await encrypt({category:entry.category,key:entry.key,value:entry.value});
     try{
      const result=await api('/v1/record',{id,kind:entry.category,operationId:entry.operationId,expectedRevision:entry.baseRevision||null,envelope:entry.envelope});
-     versions.set(id,result.record.revision);
-     if(pending.get(token)===entry){pending.delete(token);edits[entry.category][entry.key].updatedAt=result.record.updatedAt;known.set(token,JSON.stringify(edits[entry.category][entry.key]));persist();}else if(pending.get(token)?.baseRevision===entry.baseRevision)pending.get(token).baseRevision=result.record.revision;keepDrafts();
+     versions.set(id,result.record.revision);baseValues.set(token,JSON.parse(JSON.stringify(entry.value)));
+     if(pending.get(token)===entry){pending.delete(token);edits[entry.category][entry.key].updatedAt=result.record.updatedAt;known.set(token,JSON.stringify(edits[entry.category][entry.key]));persist();}else if(pending.get(token)?.baseRevision===entry.baseRevision){pending.get(token).baseRevision=result.record.revision;pending.get(token).baseValue=JSON.parse(JSON.stringify(entry.value));}keepDrafts();
     }catch(error){
-     if(error.status===409){entry.conflict=true;entry.remote=error.result.record;keepDrafts();status('Another leader saved a change to the same item. Your draft is kept.');conflictControls();}
+     if(error.status===409){entry.conflict=true;entry.remote=error.result.record;keepDrafts();status(conflictMessage());conflictControls();}
      else throw error;
     }
    }
@@ -113,7 +131,7 @@ const SharedDashboardSync=(()=>{
  }
  function seedDrafts(){
   for(const category of categories)for(const[key,value]of Object.entries(edits[category]||{})){
-   if(!pending.has(category+':'+key)&&JSON.stringify(value)!==JSON.stringify(data.edits?.[category]?.[key])){changed(category,key,value);pending.get(category+':'+key).migration=true;keepDrafts();}
+   if(!recordIds.has(category+':'+key)&&!pending.has(category+':'+key)&&!same(value,data.edits?.[category]?.[key])){changed(category,key,value);pending.get(category+':'+key).migration=true;keepDrafts();}
   }
  }
  function lineupChanged(){
@@ -192,7 +210,7 @@ const SharedDashboardSync=(()=>{
   clearInterval(refreshTimer);refreshTimer=setInterval(poll,5000);poll();
  }
  async function start(){
-  if(!enabled)return;await LeaderCache.ready();try{for(const[token,entry]of LeaderCache.get(pendingStorage)||[])if(categories.includes(entry.category)&&typeof entry.key==='string'&&entry.value)pending.set(token,entry);}catch{}
+  if(!enabled)return;await LeaderCache.ready();try{for(const[token,entry]of LeaderCache.get(pendingStorage)||[])if(categories.includes(entry.category)&&typeof entry.key==='string'&&entry.value)pending.set(token,entry);for(const[token,entry]of LeaderCache.get(recoveryStorage)||[])if(categories.includes(entry.category)&&typeof entry.key==='string'&&entry.value)recovered.set(token,entry);}catch{}
   for(const category of categories)for(const[key,value]of Object.entries(edits[category]||{}))known.set(category+':'+key,JSON.stringify(value));
   const banner=document.createElement('div');banner.id='shared-save-status';banner.hidden=true;banner.className='notice';banner.setAttribute('role','status');banner.innerHTML='<span data-shared-message>Loading shared leadership edits…</span> <button id="shared-use-latest" hidden>Load their change</button> <button id="shared-keep-draft" hidden>Save my draft</button>';
   $('overview').parentElement.prepend(banner);
@@ -205,8 +223,8 @@ const SharedDashboardSync=(()=>{
   document.addEventListener('change',event=>{if(event.target.matches('[data-lineup-player],#planner-mode,#planner-size,#planner-balance,#planner-unknown'))lineupChanged();});
   document.addEventListener('click',event=>{const button=event.target.closest('button');if(!button)return;if(['planner-suggest','planner-save'].includes(button.id))lineupChanged();if(button.id==='save-note'&&selectedTag&&edits.notes[selectedTag])changed('notes',selectedTag,edits.notes[selectedTag]);});
   window.addEventListener('online',flush);
-  seedDrafts();wireRefresh();
-  try{await load();conflictControls();for(const category of categories)for(const [key,value]of Object.entries(edits[category]||{}))if(!recordIds.has(category+':'+key)&&!pending.has(category+':'+key))changed(category,key,value);}
+  wireRefresh();
+  try{await load();seedDrafts();conflictControls();for(const category of categories)for(const [key,value]of Object.entries(edits[category]||{}))if(!recordIds.has(category+':'+key)&&!pending.has(category+':'+key))changed(category,key,value);}
   catch(error){status(error.message+' Local notes remain available.');}
   setInterval(()=>{if(!document.hidden)load().catch(error=>status(error.message));if(pending.size)flush();},20000);
  }
