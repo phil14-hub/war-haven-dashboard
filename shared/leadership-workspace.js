@@ -32,8 +32,8 @@ const LeadershipWorkspace=(()=>{
   profileTabs.set(tag,'war');openPlayer(tag);
   const panel=$('player-profile').querySelector('[data-profile-panel="war"]');if(!panel)return;
   const existing=panel.querySelector('.attendance-evidence');existing?.remove();
-  const evidence=(player.history||[]).filter(h=>!h.excused&&(!h.complete||h.player.attacksUsed===0)).slice(-10).reverse();
-  panel.insertAdjacentHTML('afterbegin','<section class="notice attendance-evidence"><h3>Attendance flag evidence</h3><p>'+escape(player.reason)+'</p>'+evidence.map(h=>'<p><button data-attendance-war="'+escape(h.war.id)+'">'+escape(h.war.opponent?.name||'Opponent')+' · '+escape(timestamp(h.war.endTime))+' · '+(h.complete?'0 / 2 confirmed attacks':'Final details incomplete')+'</button></p>').join('')+(!evidence.length?'<p>No unexcused missed or incomplete appearance is available in this player’s captured history.</p>':'')+'<p class="small muted">Approved excuses remain excluded. Review the actual capture before making a decision in Clash.</p></section>');
+  const evidence=(player.attendanceHistory||player.history||[]).filter(h=>!h.excused&&(!h.complete||h.player.attacksUsed===0)).slice(-10).reverse();
+  panel.insertAdjacentHTML('afterbegin','<section class="notice attendance-evidence"><h3>Attendance flag evidence</h3><p>'+escape(player.reason)+'</p>'+evidence.map(h=>'<p><button data-attendance-war="'+escape(h.war.id)+'">'+escape(h.war.opponent?.name||'Opponent')+' · '+escape(timestamp(h.war.endTime))+' · '+(h.complete?'0 / '+(h.war.kind==='CWL'?1:2)+' confirmed attacks':'Final details incomplete')+'</button></p>').join('')+(!evidence.length?'<p>No unexcused missed or incomplete appearance is available in this player’s captured history.</p>':'')+'<p class="small muted">Approved excuses remain excluded. Review the actual capture before making a decision in Clash.</p></section>');
   panel.querySelectorAll('[data-attendance-war]').forEach(button=>button.onclick=()=>openWarEvidence(button.dataset.attendanceWar));
   panel.tabIndex=-1;panel.scrollIntoView?.({block:'start',behavior:'auto'});panel.focus({preventScroll:true});
  }
