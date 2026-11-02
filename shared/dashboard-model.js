@@ -196,15 +196,26 @@
     for (const w of wars) for (const p of w.participants || []) if (!roster.has(tag(p.tag))) roster.set(tag(p.tag), { ...p, tag: tag(p.tag), inClan: false });
     for (const r of [...data.raids || []].sort((a, b) => time(b.startTime) - time(a.startTime))) for (const p of r.members || []) if (!roster.has(tag(p.tag))) roster.set(tag(p.tag), { ...p, name: p.name || p.tag, tag: tag(p.tag), inClan: false });
     for (const [key, h] of Object.entries(data.memberHistory || {})) if (!roster.has(tag(key))) roster.set(tag(key), { tag: tag(key), name: h.name || key, inClan: false });
-    const manualStarts = Object.values(edits.manualWars || {}).filter((w) => w.kind === "Regular").map((w) => time(w.endTime)).filter(Boolean);
+    const manualStarts = Object.values(edits.manualWars || {}).filter((w) => ["Regular", "CWL"].includes(w.kind)).map((w) => time(w.endTime)).filter(Boolean);
     const policyStart = Math.min(time(data.policyStart) || asOf, ...manualStarts);
     const closed = wars.filter((w) => w.kind === "Regular" && isClosed(w, asOf) && time(w.endTime) >= policyStart);
-    const current = wars.filter((w) => !isClosed(w, asOf) && w.kind === "Regular").at(-1);
+    const closedAttendance = wars.filter((w) => ["Regular", "CWL"].includes(w.kind) && isClosed(w, asOf) && time(w.endTime) >= policyStart);
+    const current = wars.filter((w) => !isClosed(w, asOf) && ["Regular", "CWL"].includes(w.kind)).at(-1);
     const rows = [];
     for (const p of roster.values()) {
-      let streak = 0, highest = 0, kick = false, possibleKick = false, missedBefore = false, returnedAfterMiss = false, uncertain = false, lastMiss = -1, used = 0, allowed = 0, played = 0, missedOne = 0, misses = 0;
+      let streak = 0, highest = 0, kick = false, possibleKick = false, missedBefore = false, returnedAfterMiss = false, uncertain = false, used = 0, allowed = 0, played = 0, missedOne = 0, misses = 0;
       const history = [], gaps = [];
-      closed.forEach((w, index) => {
+      // A missed CWL 0/1 is a missed war for bench purposes, while
+      // regular-war kick and recovery rules remain tracked separately.
+      const attendanceHistory = closedAttendance.flatMap((w) => {
+        const member = (w.participants || []).find((m) => tag(m.tag) === p.tag);
+        if (!member) return [];
+        const max = w.kind === "CWL" ? 1 : 2;
+        return [{ war: w, player: member, excused: isExcused(edits, w, p.tag),
+          complete: w.final === true && w.rosterComplete === true &&
+            Number.isInteger(member.attacksUsed) && member.attacksUsed >= 0 && member.attacksUsed <= max }];
+      });
+      closed.forEach((w) => {
         const member = (w.participants || []).find((m) => tag(m.tag) === p.tag);
         if (!member) {
           if (!w.rosterComplete) {
@@ -258,7 +269,6 @@
           returnedAfterMiss = false;
           streak++;
           misses++;
-          lastMiss = index;
           if (!uncertain) {
             highest = Math.max(highest, streak);
             if (streak >= 2) kick = true;
@@ -268,11 +278,16 @@
       // Keep the repeat warning until leadership reviews it; a later attack only
       // resets the consecutive-miss streak. A confirmed kick flag takes priority.
       possibleKick = possibleKick && !kick;
-      const bench = !kick && lastMiss >= 0 && lastMiss === closed.length - 1;
+      const lastClosedWar = closedAttendance.at(-1);
+      const lastAttendance = attendanceHistory.find((h) => h.war === lastClosedWar);
+      const reviewedThrough = time(edits.flagResolutions?.[p.tag]?.through);
+      const bench = !kick && Boolean(lastAttendance?.complete && !lastAttendance.excused &&
+        lastAttendance.player.attacksUsed === 0 &&
+        !(reviewedThrough && time(lastClosedWar.endTime) <= reviewedThrough));
       const live = (current?.participants || []).find((m) => tag(m.tag) === p.tag);
       let status = !p.inClan ? "Departed" : kick ? "Kick" : possibleKick ? "Possible kick" : bench ? "Bench" : uncertain ? "Review" : p.warPreference === "out" ? "Opted out" : "Eligible";
-      const reason = status === "Kick" ? "Two consecutive confirmed 0/2 appearances." : status === "Possible kick" ? "Missed both attacks, participated, then missed both again. Review for a possible kick." : status === "Review" ? "A final result is missing. Fill the gap before deciding." : status === "Bench" ? "Sit out the next regular war." : status === "Opted out" ? "Current war preference is out." : status === "Departed" ? "Not in the latest saved clan roster." : streak ? `${streak} missed-both appearance${streak === 1 ? "" : "s"}. Bench served.` : "No attendance penalty.";
-      rows.push({ ...p, status, reason, streak, highest, kick, possibleKick, uncertain, bench, used, allowed, played, missedOne, misses, rate: allowed ? used / allowed : null, history, gaps, live: live || null, benchViolation: Boolean(bench && live), notes: edits.notes?.[p.tag]?.text || "", cwlMissed: wars.filter((w) => w.kind === "CWL" && w.final && w.rosterComplete && !isExcused(edits, w, p.tag) && (w.participants || []).some((m) => tag(m.tag) === p.tag && m.attacksUsed === 0)).length });
+      const reason = status === "Kick" ? "Two consecutive confirmed 0/2 appearances." : status === "Possible kick" ? "Missed both attacks, participated, then missed both again. Review for a possible kick." : status === "Review" ? "A final result is missing. Fill the gap before deciding." : status === "Bench" ? (lastClosedWar?.kind === "CWL" ? "Missed the CWL attack (0/1). Sit out the next war." : "Missed both regular-war attacks (0/2). Sit out the next war.") : status === "Opted out" ? "Current war preference is out." : status === "Departed" ? "Not in the latest saved clan roster." : streak ? `${streak} missed-both appearance${streak === 1 ? "" : "s"}. Bench served.` : "No attendance penalty.";
+      rows.push({ ...p, status, reason, streak, highest, kick, possibleKick, uncertain, bench, used, allowed, played, missedOne, misses, rate: allowed ? used / allowed : null, history, attendanceHistory, gaps, live: live || null, benchViolation: Boolean(bench && live), notes: edits.notes?.[p.tag]?.text || "", cwlMissed: wars.filter((w) => w.kind === "CWL" && w.final && w.rosterComplete && !isExcused(edits, w, p.tag) && (w.participants || []).some((m) => tag(m.tag) === p.tag && m.attacksUsed === 0)).length });
     }
     const priority = { Kick: 0, "Possible kick": 1, Review: 2, Bench: 3, Eligible: 4, "Opted out": 5, Departed: 6 };
     return rows.sort((a, b) => priority[a.status] - priority[b.status] || a.name.localeCompare(b.name));
@@ -867,7 +882,7 @@
     if (!p.inClan) return "Departed";
     if (p.status === "Kick" || p.kick) return "Kick flag";
     if (p.status === "Possible kick" || p.possibleKick) return "Possible kick · review attendance";
-    if (mode === "Regular" && (p.status === "Bench" || p.bench)) return "Regular-war bench";
+    if (p.status === "Bench" || p.bench) return mode === "CWL" ? "CWL bench" : "Regular-war bench";
     if (p.uncertain || p.status === "Review") return "Missing final results";
     if (p.warPreference === "out") return "Opted out";
     if (p.warPreference !== "in" && !includeUnknown) return "Preference unknown";
