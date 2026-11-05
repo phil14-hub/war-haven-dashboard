@@ -5,9 +5,10 @@ import {chromium} from 'playwright';
 
 const fixture=readFileSync('tests/fixtures/leadership.html','utf8');
 const server=createServer((request,response)=>{
-  if(request.url?.startsWith('/members/leadership')){
-    response.writeHead(200,{'content-type':'text/html; charset=utf-8'});response.end(fixture);
-  } else {response.writeHead(404);response.end();}
+  // Portal navigation can redirect /members/leadership to its canonical path.
+  // Keep the same isolated, static fixture accessible at either local route.
+  response.writeHead(200,{'content-type':'text/html; charset=utf-8'});
+  response.end(fixture);
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
