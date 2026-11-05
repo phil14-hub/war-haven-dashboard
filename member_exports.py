@@ -111,6 +111,7 @@ def build_snapshot(state, tracker):
         donations = donation_evidence(history, stamp(at))
         observed_donations = donation_summary(history, stamp(at))
         own_wars = []
+        war_destruction_series = []
         stats = {'used': 0, 'allowed': 0, 'appearances': 0, 'stars': 0, 'attacks': 0, 'triples': 0, 'destruction': 0, 'destructionAttacks': 0}
         for war in sorted(wars.values(), key=lambda w: stamp(w.get('endTime'))):
             if war.get('kind') not in ('Regular', 'CWL'):
@@ -133,6 +134,8 @@ def build_snapshot(state, tracker):
                 stats['used'] += used
                 stats['allowed'] += allowed
             seen_attacks = set()
+            war_destruction = 0
+            war_destruction_attacks = 0
             for index, attack in enumerate(participant.get('attacks', [])):
                 if not isinstance(attack, dict):
                     continue
@@ -146,16 +149,24 @@ def build_snapshot(state, tracker):
                 if isinstance(destruction, (int, float)) and not isinstance(destruction, bool) and 0 <= destruction <= 100:
                     stats['destruction'] += destruction
                     stats['destructionAttacks'] += 1
+                    war_destruction += destruction
+                    war_destruction_attacks += 1
                 if count(attack.get('stars')) and attack['stars'] <= 3:
                     stats['attacks'] += 1
                     stats['stars'] += attack['stars']
                     stats['triples'] += attack['stars'] == 3
+            if war_destruction_attacks and stamp(war.get('endTime')):
+                war_destruction_series.append({'at': war['endTime'], 'value': war_destruction / war_destruction_attacks,
+                                               'attacks': war_destruction_attacks, 'kind': war['kind'], 'warId': war['id']})
         raids = []
-        for raid in {r.get('id') or r.get('startTime'): r for r in state.get('raids', [])}.values():
+        historical_raids = {r.get('id') or r.get('startTime'): r for r in state.get('raids', []) if r.get('id') or r.get('startTime')}
+        for raid in sorted(historical_raids.values(), key=lambda r: (stamp(r.get('startTime')) or stamp(r.get('endTime')), str(r.get('id') or ''))):
             entry = next((p for p in raid.get('members', []) if tracker.normalize_tag(p.get('tag')) == tag), None)
             if entry:
-                raids.append({'id': raid.get('id'), 'endTime': raid.get('endTime'), 'state': raid.get('state'), 'loot': entry.get('capitalResourcesLooted'), 'attacks': entry.get('attacks')})
+                raids.append({'id': raid.get('id'), 'startTime': raid.get('startTime'), 'endTime': raid.get('endTime'), 'state': raid.get('state'), 'loot': entry.get('capitalResourcesLooted'), 'attacks': entry.get('attacks')})
         completed_loot = [r['loot'] for r in raids if r['state'] == 'ended' and count(r['loot'])]
+        raid_loot_series = [{'at': r['endTime'] or r['startTime'], 'value': r['loot'], 'raidId': r['id']}
+                            for r in raids if r['state'] == 'ended' and count(r['loot']) and (r['endTime'] or r['startTime'])]
         league = tracker.league_placement(player, profile, at, state.get('clanTag'))
         league_series = []
         for sample in state.get('leagueHistory', []):
@@ -183,7 +194,8 @@ def build_snapshot(state, tracker):
                 'trophies': player.get('trophies') if count(player.get('trophies')) else None,
                 'observedDonations': observed_donations,
                 'capitalGold': capital, 'capitalSeries': capital_series, 'donationSeries': donations,
-                'raidLoot': sum(completed_loot) if completed_loot else None, 'raids': raids, 'wars': own_wars,
+                'raidLoot': sum(completed_loot) if completed_loot else None, 'raids': raids, 'raidLootSeries': raid_loot_series,
+                'wars': own_wars, 'warDestructionSeries': war_destruction_series,
                 'warStats': stats, 'leagueSeries': league_series, 'armySeries': army_series, 'armyPercent': army.get('completionPercent'), 'army': army,
                 'heroes': [{'name': h['name'], 'level': h['level'], 'maximum': h['maximum']} for h in army.get('groups', {}).get('heroes', {}).get('items', [])],
                 'achievements': badges, 'profileStatus': profile_status, 'season': str(at)[:7]}
@@ -192,6 +204,23 @@ def build_snapshot(state, tracker):
                             'seasonDonations': view['seasonDonations'], 'capitalGold': capital, 'warStars': stats['stars'] if stats['attacks'] else None,
                             'raidLoot': view['raidLoot'], 'averageDestruction': stats['destruction'] / stats['destructionAttacks'] if stats['destructionAttacks'] else None,
                             'windowStart': next((w['endTime'] for w in own_wars if w['final']), None), 'windowEnd': next((w['endTime'] for w in reversed(own_wars) if w['final']), None), 'destructionAttacks': stats['destructionAttacks'], 'attackUse': stats['used'] / stats['allowed'] if stats['allowed'] else None})
+    # Leaderboards rank by the unrounded average; an equal average with more
+    # recorded destruction attacks appears first. Both regular wars and CWL
+    # already contribute to destructionAttacks; unknown values rank last.
+    comparisons.sort(key=lambda row: (row['averageDestruction'] is None,
+                                      -(row['averageDestruction'] or 0),
+                                      -row['destructionAttacks'], row['name'].casefold(), row['tag']))
+    previous_average = None
+    current_rank = 0
+    for position, row in enumerate(comparisons, 1):
+        average = row['averageDestruction']
+        if average is None:
+            row['destructionRank'] = None
+        else:
+            if previous_average is None or average != previous_average:
+                current_rank = position
+            row['destructionRank'] = current_rank
+            previous_average = average
     from upgrade_progress import compact_series
     for player in members.values():
         for field in ('capitalSeries', 'donationSeries', 'leagueSeries', 'armySeries'):
