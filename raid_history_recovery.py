@@ -25,8 +25,8 @@ def recover(state, config, tracker):
     missing = [r for r in state.get('raids', []) if r.get('state') == 'ended' and not r.get('members') and r.get('endTime') and r.get('id') not in attempted]
     for raid in sorted(missing, key=lambda r: r['endTime'], reverse=True)[:8]:
         try:
-            # Tuesday's archive still has this weekend's individual API report.
-            until = datetime.fromisoformat(raid['endTime'].replace('Z', '+00:00')) + timedelta(days=2)
+            # Use the last archive before the next Friday raid begins.
+            until = datetime.fromisoformat(raid['endTime'].replace('Z', '+00:00')) + timedelta(days=3, hours=23)
             path = '/repos/' + config['repository'] + '/commits?' + urlencode({'path': tracker.GITHUB_HISTORY_PATH, 'until': until.astimezone(timezone.utc).isoformat(), 'per_page': 1})
             commits = tracker.github_request(config, 'GET', path)
             if not isinstance(commits, list):
