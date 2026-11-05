@@ -322,7 +322,14 @@ function leaguePanel() {
   }
   return `<div class="panel" style="margin-top:20px"><h2>CWL group · ${esc(season)}</h2><p class="small muted">Saved attack stars exclude league win bonuses. These standings use the captured rounds for this season.</p><div class="table-scroll"><table><thead><tr><th>Clan</th><th class="num">Stars</th><th class="num">Wins</th><th class="num">Completed</th></tr></thead><tbody>${[...standings.values()].sort((a, b) => b.stars - a.stars).map((r) => `<tr><td>${esc(r.name)}</td><td class="num">${r.stars}</td><td class="num">${r.won}</td><td class="num">${r.finished}</td></tr>`).join("")}</tbody></table></div></div>`;
 }
+const capitalHistoryStorageKey = "warhaven:capital-history-window";
 let capitalHistoryWindow = "all";
+try {
+  const remembered = localStorage.getItem(capitalHistoryStorageKey);
+  if (["8", "26", "all"].includes(remembered)) capitalHistoryWindow = remembered;
+} catch (_) {
+  // Private or restricted sessions may not permit local storage.
+}
 function renderCapital() {
   const raids = latestRaids(), clan = data.clanProfile || {}, prior = $("raid-select")?.value, chosen = raids.find((r) => r.id === prior) || raids[0], districts = clan.clanCapital?.districts || [];
   const contributors = rows.filter((p) => p.inClan).sort((a, b) => (b.contributions.capital.total ?? -1) - (a.contributions.capital.total ?? -1) || a.name.localeCompare(b.name)), known = contributors.filter((p) => p.contributions.capital.total !== null), total = known.reduce((s, p) => s + p.contributions.capital.total, 0);
@@ -339,6 +346,7 @@ function renderCapital() {
   };
   $("raid-history-window").onchange = () => {
     capitalHistoryWindow = $("raid-history-window").value;
+    try { localStorage.setItem(capitalHistoryStorageKey, capitalHistoryWindow); } catch (_) {}
     drawHistory();
   };
   drawHistory();
