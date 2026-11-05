@@ -244,3 +244,15 @@ html[data-theme=light] .hub-nav button[aria-current=page]{background:var(--selec
 .pending>.eyebrow,.am-card .tag{white-space:break-spaces}
 
 .shared-conflict-dialog{width:min(900px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;box-sizing:border-box}.shared-conflict-dialog select{max-width:100%;width:100%;min-height:44px}.shared-conflict-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.shared-conflict-columns pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;background:var(--bg);padding:12px;border:1px solid var(--line);border-radius:10px;max-height:45vh;overflow:auto}.shared-conflict-dialog .row{display:flex;flex-wrap:wrap;gap:8px}.shared-conflict-dialog button{min-height:44px}@media(max-width:650px){.shared-conflict-columns{grid-template-columns:minmax(0,1fr)}}
+
+/* Full raid-weekend history remains legible on narrow and wide screens. */
+.capital-history-panel .section-heading{flex-wrap:wrap}
+.capital-history-filter{display:grid;gap:6px;min-width:min(100%,225px);font-size:12px;color:var(--muted)}
+.capital-history-filter select{width:100%;max-width:100%;min-height:44px}
+.capital-history-panel .chart-row{grid-template-columns:84px minmax(0,1fr) minmax(70px,auto)}
+.capital-history-panel .chart-row>span,.capital-history-panel .chart-row>strong{overflow-wrap:anywhere}
+@media(max-width:600px){
+ .capital-history-panel .section-heading{align-items:stretch}
+ .capital-history-filter{width:100%}
+ .capital-history-panel .chart-row{grid-template-columns:72px minmax(28px,1fr) minmax(70px,auto);gap:6px}
+}
