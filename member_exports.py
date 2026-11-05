@@ -210,21 +210,26 @@ def build_snapshot(state, tracker):
     comparisons.sort(key=lambda row: (row['averageDestruction'] is None,
                                       -(row['averageDestruction'] or 0),
                                       -row['destructionAttacks'], row['name'].casefold(), row['tag']))
-    previous_average = None
+    previous_key = None
     current_rank = 0
     for position, row in enumerate(comparisons, 1):
         average = row['averageDestruction']
         if average is None:
             row['destructionRank'] = None
         else:
-            if previous_average is None or average != previous_average:
+            # An equal average with more known attacks is ahead, not tied.
+            # Equal average AND sample size still share the same rank.
+            rank_key = (average, row['destructionAttacks'])
+            if rank_key != previous_key:
                 current_rank = position
             row['destructionRank'] = current_rank
-            previous_average = average
+            previous_key = rank_key
     from upgrade_progress import compact_series
     for player in members.values():
         for field in ('capitalSeries', 'donationSeries', 'leagueSeries', 'armySeries'):
-            player[field] = compact_series(player[field])[-730:]
+            # Retain every distinct saved observation. A former 730-point tail
+            # silently hid older history on long-lived member dashboards.
+            player[field] = compact_series(player[field])
     return {'version': 1, 'updatedAt': at, 'clan': {'tag': state['clanTag'], 'name': state.get('clanName') or 'War Haven', 'level': clan.get('clanLevel'), 'badgeUrl': tracker.clan_badge_url(clan)},
             'members': members, 'comparisons': comparisons}
 

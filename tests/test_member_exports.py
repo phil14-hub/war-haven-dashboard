@@ -1,6 +1,7 @@
 import copy
 import json
 import unittest
+from datetime import datetime, timedelta, timezone
 import Clash_War_Tracker as tracker
 import member_exports
 
@@ -66,11 +67,46 @@ class MemberExportTests(unittest.TestCase):
   self.assertEqual([v['tag'] for v in comparison],['#P0Y','#P0U','#P0C','#P0Q'])
   self.assertEqual([v['destructionAttacks'] for v in comparison],[15,1,3,0])
   self.assertEqual([v['averageDestruction'] for v in comparison],[100,100,95,None])
-  self.assertEqual([v['destructionRank'] for v in comparison],[1,1,3,None])
+  self.assertEqual([v['destructionRank'] for v in comparison],[1,2,3,None])
   history=result['members']['#P0Y']['warDestructionSeries']
   self.assertEqual(len(history),15)
   self.assertEqual(sum(v['kind']=='CWL' for v in history),7)
   self.assertTrue(all(v['value']==100 and v['attacks']==1 for v in history))
+
+ def test_equal_sample_count_preserves_shared_destruction_rank(self):
+  state=self.state()
+  state['roster']=[{'tag':'#P0Y','name':'Alpha','townHallLevel':12},
+                   {'tag':'#P0U','name':'Bravo','townHallLevel':12}]
+  state['clanProfile']['members']=2
+  state['wars']=[{'id':'same-count','kind':'CWL','endTime':'2030-01-02T00:00:00Z',
+                  'state':'warEnded','final':True,'rosterComplete':True,'attacksPerMember':1,
+                  'participants':[{'tag':tag,'attacksUsed':1,
+                                   'attacks':[{'order':1,'stars':3,'destructionPercentage':100}]}
+                                  for tag in ('#P0Y','#P0U')]}]
+  entries=member_exports.build_snapshot(state,tracker)['comparisons']
+  self.assertEqual([v['destructionRank'] for v in entries],[1,1])
+
+ def test_long_saved_history_is_not_cut_off_after_730_observations(self):
+  state=self.state()
+  state['lastSuccessfulSync']='2030-01-03T00:00:00Z'
+  state['memberHistory']['#P0Y']['since']='2027-01-01T00:00:00Z'
+  start=datetime(2027,1,1,tzinfo=timezone.utc)
+  timestamp=lambda index:(start+timedelta(days=index)).isoformat().replace('+00:00','Z')
+  state['memberHistory']['#P0Y']['capitalSamples']=[
+   {'at':timestamp(i),'total':i*100} for i in range(750)]
+  state['memberHistory']['#P0Y']['donationIntervals']=[
+   {'start':timestamp(i),'end':timestamp(i+1),'count':1} for i in range(750)]
+  state['leagueHistory']=[
+   {'at':timestamp(i),'members':[{'tag':'#P0Y','league':{'points':i+1,'name':'Test'}}]}
+   for i in range(750)]
+  state['memberProgressHistory']['#P0Y']=[
+   {'at':timestamp(i),'townHall':12,'method':'th-work-v2','completionPercent':i/10}
+   for i in range(750)]
+  view=member_exports.build_snapshot(state,tracker)['members']['#P0Y']
+  for field in ('capitalSeries','donationSeries','leagueSeries','armySeries'):
+   self.assertEqual(len(view[field]),750,field)
+   self.assertEqual(view[field][0]['at'],timestamp(0) if field!='donationSeries' else timestamp(1))
+  self.assertEqual(view['leagueSeries'][-1]['value'],750)
 
  def test_raid_loot_retains_prior_completed_weekends_in_order(self):
   state=self.state()
