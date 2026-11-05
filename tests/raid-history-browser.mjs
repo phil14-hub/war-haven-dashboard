@@ -30,9 +30,15 @@ try {
   await page.addInitScript(()=>{
     window.warHavenIndividual=true;
     window.warHavenSession={proof:async()=>''};
-    window.fetch=async()=>new Response(JSON.stringify({version:1,preferences:{},notifications:[],records:[]}),{
-      status:200,headers:{'content-type':'application/json'}
-    });
+    window.fetch=async(input)=>{
+      const path=new URL(typeof input==='string'?input:input.url||String(input),location.href).pathname;
+      const body=path==='/members/api/me'
+        ? {account:{id:'fixture-leader',role:'leader'},eligible:true}
+        : {version:1,preferences:{},notifications:[],records:[]};
+      return new Response(JSON.stringify(body),{
+        status:200,headers:{'content-type':'application/json'}
+      });
+    };
   });
   await page.route('**/*',route=>{
     if(route.request().url().startsWith(origin))return route.continue();
