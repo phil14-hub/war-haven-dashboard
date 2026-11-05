@@ -83,6 +83,10 @@ try {
         await page.screenshot({path:'tests/screenshots/capital-'+theme+'-'+width+'.png',animations:'disabled'});
     }
   }
+  await page.locator('#raid-history-window').selectOption('8');
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.locator('#raid-history-window').waitFor();
+  assert.equal(await page.locator('#raid-history-window').inputValue(),'8','history period survives real browser reload');
   console.log('Browser responsive checks passed: 320, 360, 375, 390, 430, 768, 1024, 1440 pixels; dark/light; complete raid history.');
 }finally{
   await browser.close();await new Promise(resolve=>server.close(resolve));
