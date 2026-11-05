@@ -225,7 +225,8 @@ class CollectorTests(unittest.TestCase):
             for war in candidate.get('wars', []):
                 war.update(state='warEnded', final=True, rosterComplete=True,
                            observedAt=timing.iso(datetime.now(timezone.utc)))
-        def publish(config, path, state):
+        def publish(config, path, state, wait_seconds=0):
+            assert wait_seconds==0
             published.append(copy.deepcopy(state))
             return {'published': True}
         return SimpleNamespace(

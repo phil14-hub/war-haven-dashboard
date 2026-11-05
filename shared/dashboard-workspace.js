@@ -322,7 +322,7 @@ function leaguePanel() {
   }
   return `<div class="panel" style="margin-top:20px"><h2>CWL group · ${esc(season)}</h2><p class="small muted">Saved attack stars exclude league win bonuses. These standings use the captured rounds for this season.</p><div class="table-scroll"><table><thead><tr><th>Clan</th><th class="num">Stars</th><th class="num">Wins</th><th class="num">Completed</th></tr></thead><tbody>${[...standings.values()].sort((a, b) => b.stars - a.stars).map((r) => `<tr><td>${esc(r.name)}</td><td class="num">${r.stars}</td><td class="num">${r.won}</td><td class="num">${r.finished}</td></tr>`).join("")}</tbody></table></div></div>`;
 }
-const capitalHistoryStorageKey = "warhaven:capital-history-window";
+const capitalHistoryStorageKey = "warhaven:capital-history-window:"+(window.warHavenAccountId||"legacy")+":"+(()=>{try{return JSON.parse(document.getElementById("war-data")?.textContent||"{}").clanTag||"local";}catch{return "local";}})();
 let capitalHistoryWindow = "all";
 try {
   const remembered = localStorage.getItem(capitalHistoryStorageKey);

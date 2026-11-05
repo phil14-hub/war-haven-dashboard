@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - Clash_War_Tracker.py
+      - tracker_core.py
+      - publication_sync.py
       - shared/**
       - templates/**
       - shared_dashboard.js

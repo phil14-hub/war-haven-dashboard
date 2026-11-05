@@ -15,7 +15,7 @@ BACKEND_URL = 'https://portal.warhavenclan.com'
 # The service requires current dashboard-passphrase proof on every data/action request.
 ENABLED = True
 CONTEXT = b'WarHavenSharedEdit:v1'
-MACHINE_PATHS = ('/members/api/ingest', '/members/api/maintenance', '/members/api/collector-health', '/v1/refresh/claim',
+MACHINE_PATHS = ('/members/api/publication-source', '/members/api/ingest', '/members/api/maintenance', '/members/api/collector-health', '/v1/refresh/claim',
                  '/v1/refresh/progress', '/v1/refresh/finish', '/v1/refresh/reconcile')
 
 

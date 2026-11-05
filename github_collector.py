@@ -10,6 +10,7 @@ from war_end_updates import next_update, record_update
 import shared_actions
 import member_exports
 import snapshot_audit
+from publication_sync import phase,record as record_publication
 from datetime import datetime, timezone
 
 
@@ -39,7 +40,7 @@ def settings(env):
 
 
 def load_tracker():
-    path = Path(__file__).resolve().parent / 'Clash_War_Tracker.py'
+    path = Path(__file__).resolve().parent / 'tracker_core.py'
     spec = importlib.util.spec_from_file_location('war_haven_tracker', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -54,7 +55,8 @@ def run(env=None, tracker=None, *, post_war=False):
     state = tracker.new_state(tracker.DEFAULT_CLAN_TAG)
     # Verify and restore the latest archive before asking Clash for new data.
     # Any decryption/download failure aborts without a publication.
-    tracker.pull_github_history(state, config)
+    with phase("restore-and-verify"):
+        tracker.pull_github_history(state, config)
     client = shared_actions.Client(config['password'])
     shared_request = None
     if shared_actions.ENABLED:
@@ -82,7 +84,8 @@ def collect(env, tracker, config, route, state, *, post_war, request):
         shared_actions.pull(candidate, request.client, tracker)
     request.progress('collecting', 20)
     print('Collecting clan data independently; the saved recruitment scan is retained.')
-    tracker.refresh(candidate, tracker.OfficialAPI([env['COC_API_TOKEN'].strip()]))
+    with phase('collection'):
+        tracker.refresh(candidate, tracker.OfficialAPI([env['COC_API_TOKEN'].strip()]))
     candidate['website'] = {'protected': True, 'configured': True, 'historyStored': True}
     candidate['automaticUpdates'] = {**candidate.get('automaticUpdates', {}),
         'lastRunAt': tracker.now_iso(),
@@ -94,7 +97,6 @@ def collect(env, tracker, config, route, state, *, post_war, request):
     print('Automatic final-war follow-up armed from a recorded end time.'
           if final_schedule['nextUpdateAt'] else 'No pending final-war follow-up in the saved data.')
     import raid_history_recovery
-    raid_history_recovery.preserve(state,candidate)
     raid_history_recovery.recover(candidate,config,tracker)
     view = member_exports.build_snapshot(candidate, tracker)
     snapshot_audit.verify(candidate, tracker, view=view)
@@ -102,12 +104,16 @@ def collect(env, tracker, config, route, state, *, post_war, request):
     # Only an encrypted HTML file is written; state stays in memory.
     with tempfile.TemporaryDirectory(prefix='war-haven-') as directory:
         dashboard = Path(directory) / 'index.html'
-        tracker.write_dashboard(candidate, dashboard, password=config['password'])
+        with phase('render-and-encrypt'):
+            tracker.write_dashboard(candidate, dashboard, password=config['password'])
         request.progress('deploying', 90)
-        result = tracker.publish_dashboard(config, dashboard, state=candidate, **({'wait_seconds': 180} if request.lease else {}))
+        with phase('atomic-backup-commit'):
+            result = tracker.publish_dashboard(config, dashboard, state=candidate, wait_seconds=0)
         try:
-            member_exports.publish(candidate, dashboard, request.client, config['password'], tracker, view=view)
-            result['components']={'github':bool(result.get('published')),'portal':True}
+            with phase('portal-publication'):
+                publication=member_exports.publish(candidate, dashboard, request.client, config['password'], tracker, view=view)
+                record_publication(request.client,publication,config,result.get('published'))
+            result['components']={'backup':bool(result.get('commit')),'github':bool(result.get('published')),'portal':True}
             result['partial']=not bool(result.get('published'))
         except Exception:
             result['partial']=True
