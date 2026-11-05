@@ -13,6 +13,9 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({headless:true});
 const page=await browser.newPage({viewport:{width:390,height:850}});
+const browserErrors=[];
+page.on('pageerror',error=>browserErrors.push(error.message));
+page.on('console',message=>{if(message.type()==='error')browserErrors.push(message.text());});
 const dates=Array.from({length:15},(_,i)=>new Date(Date.UTC(2026,7,i+1)).toISOString());
 const raids=dates.map((startTime,i)=>({
   id:'history-'+i,startTime,endTime:startTime,state:'ended',
@@ -35,7 +38,18 @@ try {
     return route.abort();
   });
   await page.goto(origin+'/members/leadership',{waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>typeof window.renderCapital==='function',{timeout:15000});
+  await page.waitForTimeout(850);
+  const startup=await page.evaluate(()=>({
+    status:document.readyState,
+    title:document.title,
+    scripts:document.querySelectorAll('script').length,
+    capital:!!document.getElementById('capital'),
+    renderCapitalWindow:typeof window.renderCapital,
+    renderCapitalGlobal:typeof renderCapital,
+    body:document.body?.textContent?.slice(0,220)
+  }));
+  if(startup.renderCapitalWindow!=='function' && startup.renderCapitalGlobal!=='function')
+    throw Error('Dashboard browser startup failed: '+JSON.stringify({startup,browserErrors}));
   await page.evaluate(raids=>{
     window.eval('data.raids='+JSON.stringify(raids)+'; renderCapital(); setTab("capital")');
   },raids);
