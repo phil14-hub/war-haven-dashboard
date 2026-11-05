@@ -8,6 +8,7 @@ import member_exports
 import shared_actions
 import snapshot_audit
 import argparse
+from publication_sync import phase,record as record_publication
 
 
 def pages_contains_publication(config, tracker, page_sha, history_sha):
@@ -38,30 +39,46 @@ def run(env=None, tracker=None):
     tracker = tracker or github_collector.load_tracker()
     # Pin both encrypted objects to the same main-branch commit.
     head = tracker.github_request(config, 'GET', '/repos/'+repository+'/git/ref/heads/main')['object']['sha']
-    archive = tracker.github_history_record(config, ref=head, include_content=True)
-    if not archive:
-        raise ValueError('The saved clan archive is missing. No publication was made.')
-    state = tracker.decrypt_history(archive['envelope'], config['password'])
-    snapshot_audit.verify(state, tracker)
-    record = tracker.github_request(config, 'GET', '/repos/'+repository+'/contents/index.html?ref='+head)
-    if not record.get('content'):
-        record = tracker.github_request(config, 'GET', '/repos/'+repository+'/git/blobs/'+record['sha'])
-    page_sha=record['sha']
-    document = base64.b64decode(record['content'], validate=False).decode('utf-8')
+    client=shared_actions.Client(config['password'])
+    archive_meta=tracker.github_history_record(config,ref=head)
+    if not archive_meta:raise ValueError('The saved clan archive is missing. No publication was made.')
+    record=tracker.github_request(config,'GET','/repos/'+repository+'/contents/index.html?ref='+head)
+    pair={'pageSha':record['sha'],'historySha':archive_meta['sha'],'commit':head}
+    config['_publication_pair']=pair
+    try:prior=client.request('/members/api/publication-source',{'read':True}).get('source')
+    except shared_actions.SharedActionsError:prior=None
+    same=prior and all(prior.get(k)==pair[k] for k in ('pageSha','historySha'))
     read_config={**config,'token':env.get('GITHUB_TOKEN') or config['token']}
-    github_published=pages_contains_publication(read_config,tracker,page_sha,archive['sha'])
+    with phase('pages-confirmation'):
+        github_published=bool(same and prior.get('pagesConfirmed')) or pages_contains_publication(read_config,tracker,pair['pageSha'],pair['historySha'])
+    if same:
+        result={'publication':prior['publication'],'reused':True}
+        record_publication(client,result,config,github_published)
+        reconcile(client,result,github_published)
+        print('Verified source pair is unchanged; archive download, decryption and portal rebuild skipped.')
+        return result
+    with phase('archive-download-and-verify'):
+        archive=tracker.github_history_record(config,ref=head,include_content=True)
+        state=tracker.decrypt_history(archive['envelope'],config['password'])
+        snapshot_audit.verify(state,tracker)
+    if not record.get('content'):
+        record=tracker.github_request(config,'GET','/repos/'+repository+'/git/blobs/'+record['sha'])
+    document=base64.b64decode(record['content'],validate=False).decode('utf-8')
     with tempfile.TemporaryDirectory(prefix='war-haven-portal-sync-') as folder:
         path = Path(folder)/'index.html'
         path.write_text(document, encoding='utf-8')
-        client = shared_actions.Client(config['password'])
-        result = member_exports.publish(state, path, client, config['password'], tracker)
-        for kind in ('clan','recruitment'):
-            try:
-                client.request('/v1/refresh/reconcile', {'kind': kind, 'publication': result['publication'], 'githubPublished':github_published})
-            except shared_actions.SharedActionsError:
-                print('Portal data is current; an older progress entry will be reconciled on the next retry.')
+        with phase('portal-publication'):
+            result=member_exports.publish(state,path,client,config['password'],tracker)
+            record_publication(client,result,config,github_published)
+        reconcile(client,result,github_published)
     print('Member and leadership portal synchronized from the same saved revision.')
     return result
+
+
+def reconcile(client,result,github_published):
+    for kind in ('clan','recruitment'):
+        try:client.request('/v1/refresh/reconcile',{'kind':kind,'publication':result['publication'],'githubPublished':github_published})
+        except shared_actions.SharedActionsError:print('Portal data is current; an older progress entry will be reconciled on the next retry.')
 
 
 def maintenance(env=None):
@@ -70,6 +87,10 @@ def maintenance(env=None):
         raise ValueError('Maintenance is restricted to War Haven.')
     # Machine authorization does not depend on archive decryption or email delivery.
     result = shared_actions.Client('').request('/members/api/maintenance')
+    backup=result.get('backup') or {}
+    if backup.get('status')!='saved':
+        raise ValueError('Recovery backup was not confirmed; the previous complete backup is retained.')
+    print('Encrypted website recovery backup confirmed: '+str(backup.get('createdAt'))+'; '+str(backup.get('tables'))+' tables; '+str(backup.get('objects'))+' storage objects.')
     print('Temporary account data and generated-publication retention checked. Archives and clan evidence are unchanged.')
     return result
 

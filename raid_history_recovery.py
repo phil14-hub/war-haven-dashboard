@@ -22,7 +22,17 @@ def preserve(previous, current):
 def recover(state, config, tracker):
     attempted = state.setdefault('raidMemberRecovery', {})
     restored = 0
-    missing = [r for r in state.get('raids', []) if r.get('state') == 'ended' and not r.get('members') and r.get('endTime') and r.get('id') not in attempted]
+    now=datetime.now(timezone.utc)
+    def due(marker):
+        if marker is None:return True
+        if isinstance(marker,str):return False # Legacy completed lookup, retained on restore.
+        if not isinstance(marker,dict) or marker.get('version')!=1:return True
+        if marker.get('result')=='restored':return False
+        try:return datetime.fromisoformat(marker['retryAfter'].replace('Z','+00:00'))<=now
+        except (KeyError,ValueError,TypeError):return True
+    def mark(raid_id,result):
+        attempted[raid_id]={'version':1,'result':result,'at':now.isoformat(),'retryAfter':(now+timedelta(days=7)).isoformat() if result!='restored' else None}
+    missing = [r for r in state.get('raids', []) if r.get('state') == 'ended' and not r.get('members') and r.get('endTime') and due(attempted.get(r.get('id')))]
     for raid in sorted(missing, key=lambda r: r['endTime'], reverse=True)[:8]:
         try:
             # Use the last archive before the next Friday raid begins.
@@ -32,7 +42,7 @@ def recover(state, config, tracker):
             if not isinstance(commits, list):
                 raise ValueError('Invalid archive revision list')
             if not commits:
-                attempted[raid['id']] = 'no-archive'
+                mark(raid['id'],'no-archive')
                 continue
             sha = commits[0].get('sha', '')
             if len(sha) != 40 or any(c not in '0123456789abcdef' for c in sha):
@@ -48,9 +58,9 @@ def recover(state, config, tracker):
                 raid['members'] = copy.deepcopy(source['members'])
                 raid['membersRecoveredFrom'] = sha
                 restored += 1
-                attempted[raid['id']] = 'restored'
+                mark(raid['id'],'restored')
             else:
-                attempted[raid['id']] = 'no-member-details'
+                mark(raid['id'],'no-member-details')
         except Exception:
             # A transient lookup or incompatible passphrase never changes live evidence.
             print('Raid member recovery deferred for one archive; existing records retained.')

@@ -46,3 +46,9 @@ The UI runner discovers every `tests/*.test.mjs` suite. Backend changes also req
 Never commit provider tokens, passwords, plaintext state, private access files or local backups. Town Hall images are bundled from [ClashKingAssets](https://github.com/ClashKingInc/ClashKingAssets/tree/main/assets/buildings/home-village/town_hall). Supercell owns the game assets. Embedded pyaes and libsodium retain their original licenses.
 
 See [CHANGELOG.md](CHANGELOG.md) for the consolidated maintenance record.
+
+## Maintained source and portable build
+
+Edit `tracker_core.py` for collection, storage and publication logic; edit `templates/`, `shared/` and `upgrade_catalog.json` for their corresponding assets. Run `python scripts/sync_embedded_assets.py` to produce `Clash_War_Tracker.py`, the standalone dependency-free Pyto distribution. The cloud collector loads the maintained core directly. CI verifies the generated distribution matches its inputs. Do not edit generated embedded strings by hand.
+
+See [RECOVERY.md](RECOVERY.md) for encrypted website recovery snapshots, offline exports and the isolated restore procedure. Clan-history exports have a separate scope.

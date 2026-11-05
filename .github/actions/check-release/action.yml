@@ -13,7 +13,7 @@ runs:
     - name: Install regression dependencies
       shell: bash
       run: |
-        python -m pip install --disable-pip-version-check requests==2.34.2
+        python -m pip install --disable-pip-version-check requests==2.34.2 cryptography==50.0.2
         npm ci --ignore-scripts
     - name: Verify generated portable assets
       shell: bash

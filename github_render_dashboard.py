@@ -7,6 +7,7 @@ import github_recruiter
 import member_exports
 import shared_actions
 import snapshot_audit
+from publication_sync import phase,record as record_publication
 
 
 def run(env=None, tracker=None):
@@ -28,9 +29,10 @@ def run(env=None, tracker=None):
     with tempfile.TemporaryDirectory(prefix='war-haven-code-release-') as folder:
         path=Path(folder)/'index.html'
         tracker.write_dashboard(state,path,password=config['password'])
-        result=tracker.publish_dashboard(config,path,state=state,wait_seconds=180)
+        result=tracker.publish_dashboard(config,path,state=state,wait_seconds=0)
         try:
-            member_exports.publish(state,path,client,config['password'],tracker)
+            publication=member_exports.publish(state,path,client,config['password'],tracker)
+            record_publication(client,publication,config,result.get('published'))
         except shared_actions.SharedActionsError:
             print('::warning::Code and encrypted history are published. Independent portal sync will retry.')
     print('Current dashboard code published over retained clan history, without another Clash collection.')

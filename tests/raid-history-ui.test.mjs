@@ -36,7 +36,7 @@ try {
   $('raid-history-window').value='8';
   $('raid-history-window').dispatchEvent(new w.Event('change',{bubbles:true}));
   assert.equal(rows().length,8);
-  assert.equal(w.localStorage.getItem('warhaven:capital-history-window'),'8','range saved across full page reloads');
+  assert.equal(w.localStorage.getItem(w.eval('capitalHistoryStorageKey')),'8','range saved across full page reloads');
   assert.match($('raid-history-chart').textContent,/8 of 12 completed saved weekends/);
   $('raid-history-window').value='26';
   $('raid-history-window').dispatchEvent(new w.Event('change',{bubbles:true}));
