@@ -87,6 +87,10 @@ def maintenance(env=None):
         raise ValueError('Maintenance is restricted to War Haven.')
     # Machine authorization does not depend on archive decryption or email delivery.
     result = shared_actions.Client('').request('/members/api/maintenance')
+    backup=result.get('backup') or {}
+    if backup.get('status')!='saved':
+        raise ValueError('Recovery backup was not confirmed; the previous complete backup is retained.')
+    print('Encrypted website recovery backup confirmed: '+str(backup.get('createdAt'))+'; '+str(backup.get('tables'))+' tables; '+str(backup.get('objects'))+' storage objects.')
     print('Temporary account data and generated-publication retention checked. Archives and clan evidence are unchanged.')
     return result
 

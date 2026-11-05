@@ -59,3 +59,12 @@ class AuditRemediation(unittest.TestCase):
   self.assertFalse(any(m=='PATCH' for m,p in calls))
  def test_distribution_assets_match_maintained_core(self):
   for name in ('HTML_TEMPLATE','SODIUM_JS','UPGRADE_CATALOG','TOWN_HALL_IMAGES','CLEANUP_JS'):self.assertEqual(getattr(core,name),getattr(portable,name))
+
+ def test_maintenance_fails_if_recovery_snapshot_was_not_confirmed(self):
+  env={'GITHUB_REPOSITORY':'phil14-hub/war-haven-dashboard'}
+  for status in ('saved','unavailable'):
+   client=SimpleNamespace(request=lambda *a:{'backup':{'status':status,'createdAt':'2030-01-01','tables':11,'objects':3}})
+   with patch.object(shared_actions,'Client',return_value=client),contextlib.redirect_stdout(io.StringIO()):
+    if status=='saved':self.assertEqual(github_sync_portal.maintenance(env)['backup']['status'],'saved')
+    else:
+     with self.assertRaises(ValueError):github_sync_portal.maintenance(env)
