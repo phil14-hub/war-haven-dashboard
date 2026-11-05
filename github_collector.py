@@ -93,6 +93,9 @@ def collect(env, tracker, config, route, state, *, post_war, request):
     final_schedule = record_update(candidate)
     print('Automatic final-war follow-up armed from a recorded end time.'
           if final_schedule['nextUpdateAt'] else 'No pending final-war follow-up in the saved data.')
+    import raid_history_recovery
+    raid_history_recovery.preserve(state,candidate)
+    raid_history_recovery.recover(candidate,config,tracker)
     view = member_exports.build_snapshot(candidate, tracker)
     snapshot_audit.verify(candidate, tracker, view=view)
     request.progress('publishing', 75)

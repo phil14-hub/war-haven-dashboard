@@ -18,6 +18,8 @@ def run(env=None, tracker=None):
     state=tracker.new_state(tracker.DEFAULT_CLAN_TAG)
     if not tracker.pull_github_history(state,config):
         raise ValueError('Verified existing history is required. No empty release was published.')
+    import raid_history_recovery
+    raid_history_recovery.recover(state,config,tracker)
     github_recruiter.rebuild_report(state)
     client=shared_actions.Client(config['password'])
     if shared_actions.ENABLED:
