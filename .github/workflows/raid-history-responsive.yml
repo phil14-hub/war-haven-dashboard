@@ -1,0 +1,45 @@
+name: Capital history real-browser viewport checks
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'shared/dashboard-workspace.js'
+      - 'shared/dashboard-ui.css'
+      - 'tests/raid-history-browser.mjs'
+      - '.github/workflows/raid-history-responsive.yml'
+permissions:
+  contents: read
+jobs:
+  responsive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test tools
+        run: |
+          python -m pip install --disable-pip-version-check requests==2.34.2
+          npm ci --ignore-scripts
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify portable asset parity and render synthetic leadership dashboard
+        run: |
+          python scripts/sync_embedded_assets.py --check
+          python tests/create_leadership_fixture.py
+      - name: Run Chromium checks at phone, tablet and desktop widths
+        run: node tests/raid-history-browser.mjs
+      - name: Preserve screenshots for visual inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capital-history-screenshots
+          path: tests/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
