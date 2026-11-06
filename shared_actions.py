@@ -59,7 +59,10 @@ class Client:
             request = Request(BACKEND_URL + path,
                               data=json.dumps(payload or {}).encode(),
                               headers=headers, method='POST')
-            with urlopen(request, timeout=15) as response:
+            # A complete encrypted recovery snapshot can outlast ordinary reads.
+            # Keep collector authorization and the shorter timeout elsewhere.
+            timeout = 120 if path == '/members/api/maintenance' else 15
+            with urlopen(request, timeout=timeout) as response:
                 return json.load(response)
         except HTTPError as error:
             status = error.code
