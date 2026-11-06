@@ -5,19 +5,21 @@ const compact=points=>{const out=[];for(const p of points||[]){if(!out.length||J
 const int=v=>Number.isInteger(v)&&v>=0;
 function create(catalog){
  const units=new Map(catalog.units.map(u=>[u.id,u])),structures=new Map([...catalog.buildings,...catalog.traps].map(u=>[u.id,u]));
- const helpers=new Set(catalog.buildings.filter(u=>u.type==='Helper').map(u=>u.id));
- const helperNames=catalog.buildings.filter(u=>helpers.has(u.id)).map(u=>u.name);
+ // These are exported as village buildings, but have no normal upgrade progression.
+ // The Crafting Station is handled separately because it contains nested modules.
+ const nonUpgradeableStructures=new Set(catalog.buildings.filter(u=>u.id!==1000097&&Array.isArray(u.caps)&&u.caps.every(level=>level===0)).map(u=>u.id));
+ const nonUpgradeableNames=catalog.buildings.filter(u=>nonUpgradeableStructures.has(u.id)).map(u=>u.name);
  function refreshVillage(saved){
   if(!saved||!Array.isArray(saved.rows))return saved;
-  // Helper Hut levels do not represent upgrades. Repair saved summaries as
-  // well as new imports, without changing their timestamps or active timers.
-  const rows=saved.rows.filter(r=>!r.consumed&&!helpers.has(r.id)),categories={};
+  // Utility buildings (Helper Hut, B.O.B's Hut, etc.) have no progression.
+  // Repair old summaries as well as new imports without changing their dates.
+  const rows=saved.rows.filter(r=>!r.consumed&&!nonUpgradeableStructures.has(r.id)),categories={};
   for(const row of rows){
    const c=categories[row.category]??={count:0,knownCount:0,unknownCount:0,maxed:0,remainingLevels:0,known:true};c.count+=row.count;
    if(row.maximum==null||row.level===null||row.level>row.maximum){c.known=false;c.unknownCount+=row.count;}
    else{c.knownCount+=row.count;c.maxed+=row.level===row.maximum?row.count:0;c.remainingLevels+=(row.maximum-row.level)*row.count;}
   }
-  return {...saved,rows,categories,issues:(saved.issues||[]).filter(issue=>!helperNames.some(name=>issue.startsWith(name+' ')))};
+  return {...saved,rows,categories,issues:(saved.issues||[]).filter(issue=>!nonUpgradeableNames.some(name=>issue.startsWith(name+' ')))};
  }
  function parseVillage(input,expectedTag,now=Date.now()){
   const raw=typeof input==='string'?JSON.parse(input):input;
@@ -40,7 +42,7 @@ function create(catalog){
     // levelled upgrades. Do not reject an otherwise usable export for them.
     if(!u){unsupported.add(item.data);continue;}
     if(item.data===1000097&&Array.isArray(item.types)){issues.push('Crafting Station contains nested defenses; their progress is not included in the catalog totals.');continue;}
-    if(helpers.has(item.data))continue;
+    if(nonUpgradeableStructures.has(item.data))continue;
     if(item.cnt!==undefined&&(!int(item.cnt)||item.cnt>1000))throw Error(location+' ('+u.name+') has an invalid count. Copy a fresh complete village export.');
     const count=item.cnt??1;
     if(count===0)continue; // Explicitly empty inventory entries are not owned.
@@ -62,7 +64,7 @@ function create(catalog){
   }
   for(const unlock of catalog.townHallUnlocks.filter(t=>t.townHall<=townHall))for(const req of unlock.mergeRequirements||[])addVirtual(req.id??req._id,req.level,1);
   for(const u of structures.values()){
-   if(u.id===1000015||u.id===1000064||u.type==='Helper'||!u.caps[townHall-1])continue; // Optional builder huts are reported only when present.
+   if(u.id===1000015||nonUpgradeableStructures.has(u.id)||!u.caps[townHall-1])continue; // Optional builder huts are reported only when present.
    const missing=Math.max(0,(u.unlockedQuantity?.[townHall-1]||0)-(virtual.get(u.id)||0));
    if(missing&&!(u.type==='Trap'&&!Array.isArray(raw.traps)))rows.push({id:u.id,name:u.name,category:u.type==='Trap'?'Traps':u.id===1000010?'Walls':u.type==='Defense'?'Defenses':'Buildings',level:0,maximum:u.caps[townHall-1],count:missing,missing:true,remaining:u.caps[townHall-1]});
   }
