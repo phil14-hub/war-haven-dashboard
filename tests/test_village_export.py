@@ -102,4 +102,35 @@ assert.equal(fixed.importedAt,imported.importedAt);
 
 
 
+    def test_new_portal_pendant_is_known_equipment_with_verified_ore_caps(self):
+        program=r'''
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+vm.runInThisContext(fs.readFileSync('shared/upgrade-model.js','utf8'));
+const catalog=JSON.parse(fs.readFileSync('upgrade_catalog.json','utf8'));
+const entry=catalog.units.find(x=>x.id===90000061);
+assert.equal(entry.name,'Portal Pendant');
+assert.equal(entry.hero,'Minion Prince');
+assert.equal(entry.rarity,'Epic');
+assert.equal(entry.caps[17],27);
+assert.deepEqual(entry.oreToLevel[27],{shiny_ore:3600,glowy_ore:600,starry_ore:150});
+const parser=WarHavenUpgrades.create(catalog);
+const source={tag:'#PJ9CQRJLU',timestamp:1793985647,
+ buildings:[{data:1000001,lvl:18}],traps:[],equipment:[{data:90000061,lvl:1}]};
+const imported=parser.parseVillage(source,source.tag,Date.parse('2026-11-06T21:00:00Z'));
+const pendant=imported.rows.find(x=>x.id===90000061);
+assert.equal(pendant.name,'Portal Pendant');
+assert.equal(pendant.category,'Equipment');
+assert.equal(pendant.maximum,27);
+assert.equal(pendant.remaining,26);
+assert.equal(imported.categories.Equipment.known,true);
+assert.equal(imported.categories.Equipment.unknownCount,0);
+assert.ok(!imported.issues.some(x=>x.includes('90000061')));
+const ui=fs.readFileSync('shared/dashboard-ui.js','utf8');
+assert.ok(ui.includes('"90000061":["Portal Pendant","https://assets.clashk.ing/equipment/portal_pendant.webp","Equipment"]'));
+'''
+        result=subprocess.run(['node','-e',program],cwd=ROOT,capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+
+
+
 if __name__=='__main__':unittest.main()
