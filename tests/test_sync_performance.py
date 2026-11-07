@@ -70,6 +70,7 @@ class SyncPerformance(unittest.TestCase):
         self.assertIn('--maintenance-only',maintenance);self.assertNotIn('group: war-haven-clan-update',maintenance)
         text=(root/'rebuild-dashboard.yml').read_text();verify=text.split('  verify:',1)[1].split('  publish-code:',1)[0]
         self.assertIn('check-release',verify);self.assertNotIn('group: war-haven-clan-update',verify)
+        self.assertIn('requests==2.34.2',text.split('  publish-code:',1)[1],'The isolated publisher needs its own recruitment report dependency')
 
     def test_credential_setup_uses_collector_authorization_without_logging_token(self):
         calls=[];client=SimpleNamespace(request=lambda path,body:calls.append((path,body)) or {'configured':True})
