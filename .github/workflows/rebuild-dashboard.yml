@@ -17,6 +17,7 @@ on:
       - recruitment_dashboard.css
       - upgrade_progress.py
       - upgrade_catalog.json
+      - github_dispatch.py
       - github_render_dashboard.py
       - member_exports.py
       - snapshot_audit.py
@@ -29,28 +30,53 @@ permissions:
   contents: read
   id-token: write
 concurrency:
-  group: war-haven-clan-update
+  group: war-haven-code-rebuild
   cancel-in-progress: false
-  queue: max
+  queue: single
 jobs:
-  publish-code:
+  verify:
     if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify the exact release source outside the collection queue
+        uses: ./.github/actions/check-release
+  publish-code:
+    needs: verify
+    concurrency:
+      group: war-haven-clan-update
+      cancel-in-progress: false
+      queue: max
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Record workflow start
         run: python github_health.py --kind code --status running
-      - name: Verify the exact release source
-        uses: ./.github/actions/check-release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native archive encryption
+        run: python -m pip install --disable-pip-version-check cryptography==50.0.2
+      - name: Configure encrypted immediate refresh dispatch
+        env:
+          DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
+        run: python github_dispatch.py
       - name: Rebuild over the verified archive and publish matching projections
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
           DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
         run: python github_render_dashboard.py
+      - name: Verify immediate refresh dispatch after publishing
+        run: python github_dispatch.py --verify
       - name: Record workflow outcome
         if: always()
         env:

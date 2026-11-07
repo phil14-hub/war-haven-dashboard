@@ -11,11 +11,33 @@ permissions:
   actions: read
   id-token: write
 concurrency:
-  group: war-haven-clan-update
+  group: war-haven-portal-retry
   cancel-in-progress: false
-  queue: max
+  queue: single
 jobs:
+  maintenance:
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clean expired temporary data independently of publication
+        run: python github_sync_portal.py --maintenance-only
+      - name: Configure encrypted immediate refresh dispatch
+        env:
+          DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}
+        run: python github_dispatch.py
   synchronize:
+    concurrency:
+      group: war-haven-clan-update
+      cancel-in-progress: false
+      queue: max
     if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -34,8 +56,6 @@ jobs:
           node-version: '22'
       - name: Record workflow start
         run: python github_health.py --kind portal --status running
-      - name: Clean expired temporary data independently of publication
-        run: python github_sync_portal.py --maintenance-only
       - name: Publish the saved revision without another clan collection
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}

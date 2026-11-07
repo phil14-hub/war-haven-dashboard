@@ -2,6 +2,8 @@ name: Update recruitment
 
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [war-haven-refresh-recruitment]
   schedule:
     - cron: '35 7 * * *'
       timezone: America/Denver
@@ -41,6 +43,7 @@ jobs:
         run: python -m pip install --disable-pip-version-check requests==2.34.2
       - name: Refresh and publish recruitment only
         env:
+          DASHBOARD_REQUEST_ID: ${{ github.event.client_payload.requestId }}
           COC_API_TOKEN: ${{ secrets.COC_API_TOKEN }}
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
           DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}

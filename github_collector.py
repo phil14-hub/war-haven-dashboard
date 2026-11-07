@@ -61,6 +61,9 @@ def run(env=None, tracker=None, *, post_war=False):
     shared_request = None
     if shared_actions.ENABLED:
         shared_request = shared_actions.pending(client, 'clan')
+        if env.get('DASHBOARD_REQUEST_ID') and (not shared_request or shared_request.get('id') != env['DASHBOARD_REQUEST_ID']):
+            print('This request was already handled. No duplicate clan collection needed.')
+            return {'published': False, 'skipped': True}
         if post_war and shared_request is None and (next_update(state) is None or next_update(state) > datetime.now(timezone.utc)) and shared_actions.pending(client, 'recruitment'):
             import github_recruitment_collector
             return github_recruitment_collector.run(env, tracker)
@@ -114,10 +117,10 @@ def collect(env, tracker, config, route, state, *, post_war, request):
                 publication=member_exports.publish(candidate, dashboard, request.client, config['password'], tracker, view=view)
                 record_publication(request.client,publication,config,result.get('published'))
             result['components']={'backup':bool(result.get('commit')),'github':bool(result.get('published')),'portal':True}
-            result['partial']=not bool(result.get('published'))
+            result['partial']=not bool(result.get('commit'))
         except Exception:
             result['partial']=True
-            result['components']={'github':bool(result.get('published')),'portal':False}
+            result['components']={'backup':bool(result.get('commit')),'github':bool(result.get('published')),'portal':False}
             print('::warning::Member dashboards retained their previous snapshot; the independent portal sync workflow will retry.')
     print('Encrypted dashboard and history updated.' if result['published']
           else 'Encrypted update uploaded; GitHub Pages is still deploying.')
