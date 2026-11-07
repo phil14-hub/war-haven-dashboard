@@ -979,10 +979,13 @@ def refresh(state, api, profiles=True):
         group = api.get(clan_path + '/currentwar/leaguegroup')
         if group.get('season'):
             state['leagueGroups'][group['season']]=group
+        pending_tags = []
+        seen_tags = set()
         for round_data in group.get('rounds',[]):
             for war_tag in round_data.get('warTags',[]):
-                if not war_tag or war_tag == '#0':
+                if not war_tag or war_tag == '#0' or war_tag in seen_tags:
                     continue
+                seen_tags.add(war_tag)
                 lookup = state['leagueLookups'].get(war_tag)
                 group_summary=state['leagueWarSummaries'].get(war_tag)
                 if group_summary and group_summary.get('state') == 'warEnded' and lookup == 'other':
@@ -990,8 +993,12 @@ def refresh(state, api, profiles=True):
                 saved = next((w for w in state['wars'] if w.get('warTag') == war_tag),None)
                 if saved and saved.get('final') and saved.get('observedAt') and datetime.fromisoformat(saved['observedAt'].replace('Z','+00:00')) >= datetime.fromisoformat(saved['endTime'].replace('Z','+00:00')) + timedelta(minutes=5) and datetime.fromisoformat(saved['endTime'].replace('Z','+00:00')) < datetime.now(timezone.utc) - timedelta(days=1):
                     continue
+                pending_tags.append(war_tag)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [(tag, pool.submit(api.get, '/clanwarleagues/wars/' + quote(tag, safe=''))) for tag in pending_tags]
+            for war_tag, future in futures:
                 try:
-                    raw = api.get('/clanwarleagues/wars/' + quote(war_tag,safe=''))
+                    raw = future.result()
                     summary=league_summary(raw,war_tag)
                     if summary:
                         state['leagueWarSummaries'][war_tag]=summary

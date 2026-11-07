@@ -156,7 +156,7 @@ const SharedDashboardSync=(()=>{
   button.disabled=busy;button.setAttribute('aria-busy',String(busy));
   if(busy){button.dataset.keepDisabled='1';button.innerHTML='<span class="working-spinner" aria-hidden="true"></span>'+(state==='running'?'Loading':'Working');}
   else{delete button.dataset.keepDisabled;button.textContent=refreshKind==='recruitment'?'Start recruitment scan':'Start clan update';}
-  const notice=$('website-update-background');if(notice)notice.hidden=!accepted;
+  const notice=$('website-update-background');if(notice){notice.hidden=!accepted;notice.textContent=state==='pending'?'Your request is saved in the cloud. You can close this tab; the update will start automatically and keep running.':'Your update is running in the cloud. You can close this tab and it will keep running. New data appears automatically if you keep the dashboard open.';}
  }
  function snapshotContains(request,kind){
   if(!request?.startedAt)return true;
@@ -168,9 +168,9 @@ const SharedDashboardSync=(()=>{
   if(!request){progress.value=0;label.textContent='Ready to start';estimate.textContent='';return;}
   const active=request.status==='running',queued=request.status==='pending',elapsed=active?Math.max(0,(Date.now()-Date.parse(request.startedAt))/1000):0,duration=request.estimateSeconds||120;
   const percent=request.status==='completed'?100:queued?0:Math.min(95,Math.max(request.progress||0,Math.round(5+85*Math.min(1,elapsed/duration))));
-  progress.value=percent;label.textContent=percent+'% · '+({pending:'Waiting to start',starting:'Starting',collecting:'Collecting data',publishing:'Saving encrypted data',deploying:'Publishing website',completed:'Complete',failed:'Update failed',partial:'Portal sync pending'}[request.phase||request.status]||'Updating');
+  progress.value=percent;label.textContent=percent+'% · '+({pending:'Waiting to start',queued:'Waiting to start',starting:'Starting',collecting:'Collecting data',publishing:'Saving encrypted data',deploying:'Publishing website',completed:'Complete',failed:'Update failed',partial:'Delivery pending'}[request.phase||request.status]||'Updating');
   const minutes=seconds=>Math.max(1,Math.ceil(seconds/60))+' min';
-  estimate.textContent=request.status==='partial'?'GitHub is published. Portal synchronization is pending and will retry independently.':queued?'Usually starts within 5 minutes, then about '+minutes(duration)+'. Cloud scheduling can take longer.':active?(elapsed<duration?'Estimated '+minutes(duration-elapsed)+' remaining.':'Taking longer than estimated. The update is still running.'):request.status==='completed'?'Complete. New data appears automatically while this dashboard stays open.':'Your previous dashboard is still available.';
+  estimate.textContent=request.status==='partial'?(request.components?.portal?'Dashboard data is ready. Backup or public website delivery is pending.':'Portal synchronization is pending and will retry automatically. Your previous dashboard remains available.'):queued?(request.dispatch?.status==='accepted'?'Update requested immediately. Waiting for an available cloud runner; then about '+minutes(duration)+'.':request.dispatch?.status==='fallback'?'Your request is saved. The automatic fallback will start it; cloud scheduling may be delayed.':'Starting your update; then about '+minutes(duration)+'. Cloud scheduling may be delayed.'):active?(elapsed<duration?'Estimated '+minutes(duration-elapsed)+' remaining.':'Taking longer than estimated. The update is still running.'):request.status==='completed'?(request.components?.github===false?'Dashboard updated and backup saved. Public website delivery continues separately.':'Complete. New data appears automatically while this dashboard stays open.'):'Your previous dashboard is still available.';
  }
  async function refreshStatus(kind=refreshKind){
   const revision=refreshRevisions.get(kind)||0;try{const request=(await api('/v1/refresh/status',{kind})).request;if((refreshRevisions.get(kind)||0)!==revision||submittingKind===kind)return;if(request)requests.set(kind,request);else requests.delete(kind);
@@ -200,7 +200,7 @@ const SharedDashboardSync=(()=>{
   $('refresh-data').onclick=()=>showRefresh('clan');$('refresh-recruiter').onclick=()=>showRefresh('recruitment');$('settings-refresh').onclick=()=>{$('settings-dialog').close();showRefresh('clan');};
   // These controls supersede the owner-token flow after the shared service is available.
   $('refresh-dialog').querySelectorAll('[data-legacy-update]').forEach(node=>node.hidden=true);
-  $('howto-refresh').textContent='Use Update dashboard for clan, war, member and Capital data. Use Management → Recruiter → Refresh recruiting candidates for recruitment only. Each runs independently. The estimate includes a cloud queue and a running progress bar; 100% means publication is confirmed. You can leave or exit after the request is accepted. If the dashboard stays open, the new data appears automatically and you stay unlocked.';
+  $('howto-refresh').textContent='Use Update dashboard for clan, war, member and Capital data. Use Management → Recruiter → Refresh recruiting candidates for recruitment only. Each has its own request. Updates start immediately when a cloud runner is available, with an automatic fallback. 100% confirms the dashboard data and saved backup; public website delivery is tracked separately. You can leave or exit after the request is accepted. If the dashboard stays open, the new data appears automatically and you stay unlocked.';
   const poll=()=>{
    if(document.hidden)return;
    const active=[...requests.values()].some(request=>['pending','running'].includes(request.status));

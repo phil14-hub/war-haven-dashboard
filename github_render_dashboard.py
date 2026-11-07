@@ -10,12 +10,31 @@ import snapshot_audit
 from publication_sync import phase,record as record_publication
 
 
+def source_is_current(env, tracker, config):
+    """A slow verification must not republish code superseded by a newer release."""
+    checked = env.get('GITHUB_SHA')
+    if not checked:
+        return True
+    root = '/repos/' + config['repository'] + '/git/trees/'
+    def source(ref):
+        tree = tracker.github_request(config, 'GET', root + ref + '?recursive=1')
+        if tree.get('truncated') or not isinstance(tree.get('tree'), list):
+            raise ValueError('Complete release source verification is required.')
+        return {x['path']:x['sha'] for x in tree['tree'] if x.get('type') == 'blob'
+                and not x['path'].startswith(('data/', 'tests/', '.github/')) and x['path'] != 'index.html'
+                and Path(x['path']).suffix in ('.py', '.js', '.css', '.html', '.json')}
+    return source(checked) == source('main')
+
+
 def run(env=None, tracker=None):
     env = os.environ if env is None else env
     if env.get('GITHUB_REPOSITORY') != 'phil14-hub/war-haven-dashboard':
         raise ValueError('This release is restricted to War Haven.')
     config={'repository':env['GITHUB_REPOSITORY'],'password':env['DASHBOARD_PASSWORD'],'token':env['DASHBOARD_PUBLISH_TOKEN']}
     tracker=tracker or github_collector.load_tracker()
+    if not source_is_current(env, tracker, config):
+        print('A newer source release superseded this verified build. Publication skipped.')
+        return {'published':False, 'skipped':True}
     state=tracker.new_state(tracker.DEFAULT_CLAN_TAG)
     if not tracker.pull_github_history(state,config):
         raise ValueError('Verified existing history is required. No empty release was published.')

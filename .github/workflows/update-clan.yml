@@ -2,6 +2,8 @@ name: Update clan dashboard
 
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [war-haven-refresh-clan]
   schedule:
     - cron: '23 7 * * *'
       timezone: America/Denver
@@ -53,6 +55,7 @@ jobs:
         run: python github_health.py --kind clan --status running
       - name: Refresh and publish encrypted clan data
         env:
+          DASHBOARD_REQUEST_ID: ${{ github.event.client_payload.requestId }}
           COC_API_TOKEN: ${{ secrets.COC_API_TOKEN }}
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
           DASHBOARD_PUBLISH_TOKEN: ${{ secrets.DASHBOARD_PUBLISH_TOKEN }}

@@ -18,7 +18,11 @@ def run(env=None, tracker=None):
     state = tracker.new_state(tracker.DEFAULT_CLAN_TAG)
     tracker.pull_github_history(state, config)
     client = shared_actions.Client(config['password'])
-    request = shared_actions.UpdateRequest(client, 'recruitment', shared_actions.pending(client, 'recruitment'))
+    pending = shared_actions.pending(client, 'recruitment')
+    if env.get('DASHBOARD_REQUEST_ID') and (not pending or pending.get('id') != env['DASHBOARD_REQUEST_ID']):
+        print('This request was already handled. No duplicate recruitment collection needed.')
+        return {'published': False, 'skipped': True}
+    request = shared_actions.UpdateRequest(client, 'recruitment', pending)
     request.claim()
     try:
         return collect(env, tracker, config, route, state, request)
@@ -43,14 +47,16 @@ def collect(env, tracker, config, route, state, request):
         dashboard = Path(folder) / 'index.html'
         tracker.write_dashboard(candidate, dashboard, password=config['password'])
         request.progress('deploying', 90)
-        result = tracker.publish_dashboard(config, dashboard, state=candidate, **({'wait_seconds': 180} if request.lease else {}))
+        result = tracker.publish_dashboard(config, dashboard, state=candidate, wait_seconds=0)
         try:
-            member_exports.publish(candidate, dashboard, request.client, config['password'], tracker, view=view)
-            result['components']={'github':bool(result.get('published')),'portal':True}
-            result['partial']=not bool(result.get('published'))
+            publication=member_exports.publish(candidate, dashboard, request.client, config['password'], tracker, view=view)
+            from publication_sync import record
+            record(request.client,publication,config,result.get('published'))
+            result['components']={'backup':bool(result.get('commit')),'github':bool(result.get('published')),'portal':True}
+            result['partial']=not bool(result.get('commit'))
         except Exception:
             result['partial']=True
-            result['components']={'github':bool(result.get('published')),'portal':False}
+            result['components']={'backup':bool(result.get('commit')),'github':bool(result.get('published')),'portal':False}
             print('::warning::Member dashboards retained their previous snapshot; the independent portal sync workflow will retry.')
     print('Recruitment updated independently. Clan collection was not run.')
     request.finish(result)
