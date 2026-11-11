@@ -19,7 +19,7 @@ for (const uses of [[0,2,0], [0,1,0], [0,2,2,0], [0,null,2,null,0]]) {
   assert.equal(p.status, 'Possible kick', JSON.stringify(uses));
   assert.equal(p.possibleKick, true);
   assert.equal(p.kick, false);
-  assert.match(p.reason, /participated.*missed both again/);
+  assert.match(p.reason, /participated.*missed all assigned attacks again/);
 }
 for (const uses of [[0], [0,2], [2,0,2], [2,1,2]]) assert.equal(row(dataFor(uses)).possibleKick, false);
 const hard = row(dataFor([0,0]));
@@ -40,7 +40,8 @@ for (const index of [0,1,2]) {
 const unknownRoster = dataFor([0,null,2,0]);unknownRoster.wars[1].rosterComplete = false;
 assert.equal(row(unknownRoster).possibleKick, false);
 const league = dataFor([0,2,0]);league.wars[1].kind = 'CWL';league.wars[1].attacksPerMember = 1;league.wars[1].participants[0].attacksUsed = 1;
-assert.equal(row(league).possibleKick, false);
+assert.equal(row(league).status, 'Possible kick');
+assert.equal(row(league).kick, false);
 const future = dataFor([0,2,0]);future.wars[2].state='inWar';future.wars[2].endTime='2026-11-02';future.wars[2].final=false;
 assert.equal(row(future).possibleKick, false);
 const reviewed = {flagResolutions:{[tag]:{through:repeat.wars[2].endTime}}};
