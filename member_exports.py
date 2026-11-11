@@ -108,6 +108,8 @@ def build_snapshot(state, tracker):
         profile = state.get('profiles', {}).get(tag) or {}
         history = state.get('memberHistory', {}).get(tag) or {}
         capital, capital_series = capital_evidence(history, stamp(at))
+        capital_stints = [capital] + [capital_evidence(stint, stamp(at))[0] for stint in history.get("pastStints", [])]
+        capital_all_stints = sum(value for value in capital_stints if value is not None) if any(value is not None for value in capital_stints) else None
         donations = donation_evidence(history, stamp(at))
         observed_donations = donation_summary(history, stamp(at))
         own_wars = []
@@ -193,7 +195,7 @@ def build_snapshot(state, tracker):
                 'donationsReceived': player.get('donationsReceived') if count(player.get('donationsReceived')) else None,
                 'trophies': player.get('trophies') if count(player.get('trophies')) else None,
                 'observedDonations': observed_donations,
-                'capitalGold': capital, 'capitalSeries': capital_series, 'donationSeries': donations,
+                'capitalGold': capital, 'capitalGoldAllStints': capital_all_stints, 'capitalSeries': capital_series, 'donationSeries': donations,
                 'raidLoot': sum(completed_loot) if completed_loot else None, 'raids': raids, 'raidLootSeries': raid_loot_series,
                 'wars': own_wars, 'warDestructionSeries': war_destruction_series,
                 'warStats': stats, 'leagueSeries': league_series, 'armySeries': army_series, 'armyPercent': army.get('completionPercent'), 'army': army,
@@ -201,7 +203,7 @@ def build_snapshot(state, tracker):
                 'achievements': badges, 'profileStatus': profile_status, 'season': str(at)[:7]}
         members[tag] = view
         comparisons.append({'tag': tag, 'name': view['name'], 'townHallLevel': view['townHallLevel'], 'leaguePoints': league.get('points'),
-                            'seasonDonations': view['seasonDonations'], 'capitalGold': capital, 'warStars': stats['stars'] if stats['attacks'] else None,
+                            'seasonDonations': view['seasonDonations'], 'capitalGold': capital_all_stints, 'warStars': stats['stars'] if stats['attacks'] else None,
                             'raidLoot': view['raidLoot'], 'averageDestruction': stats['destruction'] / stats['destructionAttacks'] if stats['destructionAttacks'] else None,
                             'windowStart': next((w['endTime'] for w in own_wars if w['final']), None), 'windowEnd': next((w['endTime'] for w in reversed(own_wars) if w['final']), None), 'destructionAttacks': stats['destructionAttacks'], 'attackUse': stats['used'] / stats['allowed'] if stats['allowed'] else None})
     # Leaderboards rank by the unrounded average; an equal average with more

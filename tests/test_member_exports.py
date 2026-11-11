@@ -23,6 +23,26 @@ class MemberExportTests(unittest.TestCase):
   self.assertEqual(result['members']['#P0Y']['donationSeries'][-1]['value'],30)
   self.assertEqual(result['comparisons'][0]['tag'],'#P0Y')
 
+ def test_capital_comparisons_include_prior_stints_but_not_departed_members(self):
+  state=self.state()
+  state['memberHistory']['#P0Y']['pastStints']=[{
+    'since':'2029-12-01T00:00:00Z','leftAt':'2029-12-05T00:00:00Z',
+    'capitalSamples':[{'at':'2029-12-02T00:00:00Z','total':100},
+                      {'at':'2029-12-04T00:00:00Z','total':1100}]
+  }]
+  state['memberHistory']['#OLD']={
+    'name':'Former fixture','inClan':False,
+    'since':'2029-12-01T00:00:00Z','leftAt':'2029-12-06T00:00:00Z',
+    'capitalSamples':[{'at':'2029-12-02T00:00:00Z','total':200},
+                      {'at':'2029-12-05T00:00:00Z','total':3200}]
+  }
+  result=member_exports.build_snapshot(state,tracker)
+  self.assertEqual(list(result['members']),['#P0Y'])
+  self.assertEqual(result['members']['#P0Y']['capitalGold'],100)
+  self.assertEqual(result['members']['#P0Y']['capitalGoldAllStints'],1100)
+  self.assertEqual(len(result['comparisons']),1)
+  self.assertEqual(result['comparisons'][0]['capitalGold'],1100)
+
  def test_incomplete_roster_never_revokes_members(self):
   state=self.state();state['clanProfile']['members']=2
   with self.assertRaises(ValueError):member_exports.build_snapshot(state,tracker)

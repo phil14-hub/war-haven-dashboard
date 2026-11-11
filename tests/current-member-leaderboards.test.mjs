@@ -65,6 +65,11 @@ try {
   assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').contributions.allCapital"),1200);
   assert.equal(w.eval("rows.find(p=>p.tag==='#ZX9').contributions.allCapital"),9000);
   assert.ok(ranked().includes('#P0Q'),'active contributor appears');
+  w.eval("openPlayer('#P0Q')");
+  const profile=w.document.querySelector('[data-profile-panel="contributions"]');
+  assert.match(profile.querySelector('.clan-contribution-hero strong').textContent,/1,200/,'profile headline agrees with historical leaderboard score');
+  assert.match(profile.querySelector('.clan-contribution-hero').textContent,/Current stint: 200/,'current stint remains visible separately');
+  w.eval("closeLeaderProfile()");
   assert.ok(!ranked().includes('#ZX9'),'former member does not rank');
   assert.equal(capital().querySelectorAll('#raid-detail .raid-member').length,1);
   assert.equal(capital().querySelector('#raid-detail .raid-member').dataset.extendedPlayer,'#P0Q');
