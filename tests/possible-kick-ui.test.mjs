@@ -36,8 +36,8 @@ try {
   assert.ok(w.document.body.classList.contains('app-ready'));
   w.eval(`
     for (const [i, used] of [[2,2],[3,0]]) data.wars.push({
-      id:'repeat'+i, kind:'Regular', state:'warEnded', final:true, rosterComplete:true,
-      attacksPerMember:2, endTime:'2026-10-16T'+(10+i)+':00:00Z',
+      id:'repeat'+i, kind:i===3?'CWL':'Regular', state:'warEnded', final:true, rosterComplete:true,
+      attacksPerMember:i===3?1:2, endTime:'2026-10-16T'+(10+i)+':00:00Z',
       participants:[{tag:'#P0Q',name:'Omid fixture',attacksUsed:used},{tag:'#P0Y',name:'Attacker fixture',attacksUsed:0}]
     });
     render();
@@ -54,14 +54,21 @@ try {
   assert.equal($('roster-table').querySelectorAll('.pill.Kick').length, 1);
   assert.equal($('roster-table').querySelectorAll('.pill.Possiblekick').length, 1);
   assert.equal($('kick-flags-info').hidden, false);
+  assert.match($('kick-flags-info').textContent, /Regular wars and CWL share one attendance streak/);
   assert.match(w.location.hash, /status=Kick/);
   for (const theme of ['dark','light']) {
     w.WarHavenUI.apply({theme});
     assert.equal(w.document.documentElement.dataset.theme, theme);
     assert.match($('roster-table').querySelector('.pill.Possiblekick').textContent, /Possible kick/);
   }
+  w.eval("LeadershipWorkspace.openAttendanceEvidence('#P0Y')");
+  assert.match($('player-reason').textContent, /Two consecutive confirmed missed appearances/);
+  const evidence = $('player-profile').querySelector('.attendance-evidence').textContent;
+  assert.match(evidence, /0 \/ 2 confirmed attacks/);
+  assert.match(evidence, /0 \/ 1 confirmed attacks/);
+  $('player-dialog').close();
   w.eval("openPlayer('#P0Q')");
-  assert.match($('player-reason').textContent, /Missed both attacks, participated, then missed both again/);
+  assert.match($('player-reason').textContent, /participated, then missed all assigned attacks again/);
   assert.ok($('player-profile').querySelector('.pill.Possiblekick'));
   w.eval("setTab('planner')");
   assert.equal($('planner').querySelector('[data-lineup-player="#P0Q"]').disabled, false);
@@ -72,7 +79,7 @@ try {
   assert.equal($('player-profile').querySelector('[data-profile-tab="war"]').getAttribute('aria-selected'),'true');
   assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').possibleKick"), true);
   assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').used"), 2);
-  assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').allowed"), 6);
+  assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').allowed"), 4);
   assert.equal($('cards').querySelector('[data-home-card="kick"] strong').textContent, '2');
   assert.deepEqual(errors, []);
   console.log('Possible-kick DOM passed: grouped counts/filter, severity order, badges in both themes, profile reason, manual planning and reviewed history.');
