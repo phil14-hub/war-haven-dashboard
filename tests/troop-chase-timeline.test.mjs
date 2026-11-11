@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
-const { createClock } = require('../shared/troop-chase-timeline.js');
+import { createClock, minerAt, MINER_TIMING } from '../shared/troop-chase-timeline.mjs';
 
 const state = new Map();
 const storage = {
@@ -9,54 +7,38 @@ const storage = {
   setItem: (key, value) => state.set(key, value)
 };
 let now = 10_000;
-const opts = { storage, now: () => now, key: 'test:chase' };
-const clock = createClock(opts);
-assert.equal(clock.at().phase, 'chase');
-now += 2_999;
-assert.equal(clock.at().phase, 'chase');
-now++;
-assert.equal(clock.at().phase, 'dig', 'Miner starts digging after three seconds');
-now += 400;
-assert.equal(clock.at().phase, 'tunnel');
-now += 640;
-assert.equal(clock.at().phase, 'emerge');
-now += 430;
-assert.equal(clock.at().phase, 'turn');
-assert.equal(clock.at().direction, -1);
-assert.equal(clock.at().reversals, 1);
-now += 140;
-assert.equal(clock.at().phase, 'chase');
-assert.equal(clock.at().direction, -1);
+const options = { laneWidth: 390, storage, now: () => now };
+const clock = createClock(options);
+assert.equal(clock.elapsedAt(), 0);
+now += 60_000;
+const remounted = createClock({ ...options, laneWidth: 1200 });
+assert.equal(remounted.elapsedAt(), 60_000);
+assert.equal(remounted.laneWidth, 390, 'Both views use the original lane for scheduling');
+assert.equal(remounted.elapsedAt(now + 86_400_000), 86_460_000);
+assert.equal(createClock({ ...options, storage: null }).elapsedAt(), 0);
 
-// Route changes / remounts must not restart the timeline.
-const nextView = createClock(opts);
-assert.equal(nextView.startedAt, clock.startedAt);
-assert.equal(nextView.at().cycle, 1);
-const before = nextView.at().elapsedMs;
-now += 60_000; // No frames while scrolled away, hidden, or on another page.
-assert.equal(nextView.at().elapsedMs, before + 60_000);
-assert.equal(createClock(opts).at().elapsedMs, before + 60_000);
+assert.equal(MINER_TIMING.chase, 3000);
+for (const [time, phase, turned, phaseElapsed] of [
+  [-1, 'approach', false, 0], [0, 'chase', false, 0], [2999, 'chase', false, 2999],
+  [3000, 'dig', false, 0], [3399, 'dig', false, 399], [3400, 'tunnel', false, 0],
+  [4039, 'tunnel', false, 639], [4040, 'emerge', false, 0], [4159, 'emerge', false, 119],
+  [4160, 'emerge', true, 120], [4469, 'emerge', true, 429], [4470, 'done', true, 0]
+]) {
+  assert.deepEqual(minerAt(time), { phase, phaseElapsed, turned });
+}
 
-const troops = ['archer', 'giant', 'wizard', 'pekka', 'dragon', 'goblin'];
-const first = nextView.shuffleTroops(troops);
-assert.deepEqual(first, createClock(opts).shuffleTroops(troops));
-assert.deepEqual([...first].sort(), [...troops].sort());
-const nextWave = nextView.shuffleTroops(
-  troops, nextView.startedAt + (nextView.at().cycle + 1) * nextView.at().cycleDuration
-);
-assert.notEqual(first.at(-1), nextWave[0]);
-
-let rendered, savedCallback, cancelled = false;
-const stop = nextView.run(
-  s => { rendered = s; },
-  callback => { savedCallback = callback; return 7; },
-  id => { assert.equal(id, 7); cancelled = true; }
-);
-assert.equal(rendered.elapsedMs, nextView.at().elapsedMs);
-now += 10_000;
-savedCallback();
-assert.equal(rendered.elapsedMs, nextView.at().elapsedMs);
-stop();
-assert.equal(cancelled, true);
-assert.equal(clock.restart().elapsedMs, 0);
-console.log('Troop chase timeline continuity and phase tests passed.');
+for (const names of [[], ['miner'], ['dragon', 'miner'], ['dragon', 'yeti', 'miner'],
+  ['dragon', 'yeti', 'pekka', 'giant', 'hog-rider', 'miner']]) {
+  let previous;
+  const orders = new Set();
+  for (let wave = 0; wave < 512; wave++) {
+    const order = clock.shuffleTroops(names, wave);
+    assert.deepEqual(order, remounted.shuffleTroops(names, wave));
+    assert.deepEqual([...order].sort(), [...names].sort());
+    if (previous && names.length > 1) assert.notEqual(previous.at(-1), order[0]);
+    previous = order;
+    orders.add(order.join(','));
+  }
+  if (names.length === 6) assert.ok(orders.size > 50);
+}
+console.log('Troop chase clock, Miner phases and randomized rounds passed.');

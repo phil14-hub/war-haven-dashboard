@@ -1,45 +1,35 @@
-# Troop chase: portal integration checklist
+# War Haven troop chase
 
-This branch adds a **tested timing foundation**, not a replacement for the already-published animation. The visual scene is maintained in the War Haven Sites member-portal source, not in this GitHub repository. The live portal requires a separate renderer integration and deployment before this change has any user-visible effect.
+The live member portal is the **War Haven shared actions** Sites project. Its
+`worker/header-runner.js` renders the existing sprite sheets and grass scene
+for Leadership and each personal dashboard. The signed-out portal keeps the
+personal scene in an inert template until the dashboard opens.
 
-## Goal
+The shared clock lives in `shared/troop-chase-timeline.mjs`. The Sites copy is
+`public/troop-chase-timeline.js`, tracked in `canonical-assets.json` and
+bundled into the versioned renderer by the portal build. When updating the
+clock, synchronize the copy and its manifest hash using
+`scripts/sync_assets.py` as the source of the mapping. Review other asset
+drift independently so a chase release changes only the chase.
 
-- Show the same Barbarian / randomized troops / Miner chase on both **Leadership → Overview** and each **individual player's dashboard**.
-- The Miner chases visibly for **3 seconds**, then digs, tunnels ahead, emerges, and reverses every troop's direction.
-- Moving to another dashboard section, scrolling off-screen, refreshing, or returning to the overview must **not reset or pause elapsed chase time**.
-- When an inactive browser tab throttles frames, its next drawn frame should jump to the correct point on the same timeline. Browser throttling cannot be disabled.
+The renderer samples elapsed wall time from the origin saved in the browser
+tab's session storage. The saved lane width schedules full passes and keeps
+their order and phase aligned when the two dashboards have different widths.
+The renderer fits the current pass to the available space. Each round
+contains all six pursuers in a seeded random order. When the Miner is fully
+in view, it runs for 3,000 ms, digs, tunnels, and emerges ahead. Both sprites
+reverse 120 ms into the emergence and later pursuers keep that direction
+until the next Miner. Offscreen and background views skip drawing and
+sample the current time on return.
 
-## Source of truth
+## Verification
 
-The canonical source is `shared/troop-chase-timeline.js`, published to the Sites source as `public/troop-chase-timeline.js` by `scripts/sync_assets.py`. It exposes:
-
-```js
-const clock = WarHavenTroopChaseTimeline.createClock();
-const stopDrawing = clock.run(frame => {
-  // Drive the existing chase sprite renderer from this snapshot:
-  // frame.phase, frame.phaseElapsedMs, frame.phaseProgress,
-  // frame.direction (+1 or -1), frame.reversals, frame.turnProgress,
-  // frame.cycle.
-});
-// On route unmount: stopDrawing(). Keep the browser sessionStorage record.
-```
-
-Use the default storage key on **both** pages so a route change continues the same animation timeline. Do **not** call `clock.restart()` on routine render, page, scroll, visibility, resize, or route events. Restart is reserved for an explicit user reset.
-
-For each chase cycle, call `clock.shuffleTroops(troopNames, timestamp)` to derive a stable randomized troop order. Use the same frame time when choosing the cycle and rendering positions. Avoid re-randomizing on every animation frame.
-
-The previous standalone animation used `elapsed += Math.min(75, dt)` in its `requestAnimationFrame` tick, which silently paused logical time whenever frames stopped. Replace this accumulation with `clock.at()` and render based on the returned phase and elapsed time. Reversal position tweens should derive from `frame.turnProgress`, not from a separate cumulative delta. If the scene is remounted, its sprites should be immediately placed at the returned positions.
-
-The original animation's HTML/CSS/sprites, motion, and other interactions should remain unchanged. Avoid mounting an additional clone on top of an already-existing scene. The Sites app should install the existing chase once per visible scene, clean up listeners and animation frames at unmount, and recreate it with the same clock on return.
-
-## Validation before publication
-
-1. Leadership overview and individual dashboard both show the chase.
-2. Leave either page's chase offscreen for 30 seconds, return, and verify it has advanced rather than restarted.
-3. Navigate Overview → other section → Overview and personal Dashboard → other page → Dashboard, in each direction, without restarting.
-4. Leave the browser tab inactive for a minute and verify the cycle/number of reversals reflects elapsed wall time.
-5. Confirm the Miner digs **3 seconds** after a cycle starts, then emerges ahead and reverses all troop motion.
-6. Verify random troop waves do not re-randomize mid-cycle, responsiveness remains intact, and only one chase scene is visible on each page.
-7. Run `node tests/troop-chase-timeline.test.mjs` and the normal repository/Sites build and UI suites.
-
-**Do not merge/deploy this draft until the Sites renderer uses the timeline; simply copying the new asset to `public/` does not activate it.**
+- Run `node tests/troop-chase-timeline.test.mjs` and the dashboard release checks.
+- Build and test the Sites checkout with the synthetic leadership fixture.
+  The header tests cover the sprite poses, three-second chase, reversal,
+  responsive sizing, skipped frames, randomized rounds, and renderer cleanup.
+- In both dashboard views, check desktop and mobile layouts, scroll offscreen
+  and back, change sections and return, and switch browser tabs. Confirm one
+  scene draws and elapsed time advances through each transition.
+- Publish the existing Sites project with the matching renderer. Verify the
+  deployed build and the signed-in member and leadership dashboards.
