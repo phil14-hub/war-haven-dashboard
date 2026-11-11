@@ -7,6 +7,7 @@ COPIES={
  'shared/upgrade-model.js':'public/upgrade-model.js',
  'shared/dashboard-ui.js':'public/dashboard-ui.js',
  'shared/dashboard-ui.css':'public/dashboard-ui.css',
+ 'shared/troop-chase-timeline.js':'public/troop-chase-timeline.js',
  'member_accounts.js':'public/account-management.js',
  'recruitment_contacts.js':'public/recruitment-contacts.js',
  'recruitment_dashboard.js':'public/recruitment-dashboard.js',
