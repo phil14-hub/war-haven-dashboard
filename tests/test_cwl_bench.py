@@ -6,7 +6,7 @@ import Clash_War_Tracker as tracker
 
 
 class CWLBenchTests(unittest.TestCase):
-    def test_cwl_one_missed_attack_benches_next_war(self):
+    def test_regular_and_cwl_share_attendance_flags(self):
         program = r'''
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const scope = {};
@@ -50,8 +50,29 @@ assert.equal(violation.bench,true);
 assert.equal(violation.benchViolation,true);
 assert.equal(p.kick,false);
 assert.equal(p.possibleKick,false);
-assert.equal(p.streak,0);
-console.log('CWL one-attack miss bench and exclusions passed.');
+assert.equal(p.streak,1);
+for (const [first,second] of [['CWL','CWL'],['Regular','CWL'],['CWL','Regular'],['Regular','Regular']]) {
+ const older=war('w0',first,0),newer=war('w1',second,0);
+ const combined=sample([newer,older]);
+ assert.equal(combined.status,'Kick',`${first} then ${second}`);
+ assert.equal(combined.streak,2);
+ assert.equal(combined.bench,false);
+ assert.equal(combined.allowed,2*[first,second].filter(kind=>kind==='Regular').length);
+ assert.equal(Leadership.eligibility(combined,'Regular',true),'Kick flag');
+ assert.equal(Leadership.eligibility(combined,'CWL',true),'Kick flag');
+ assert.equal(sample([older,newer],{exceptions:{['w0::'+player]:{value:true}}}).status,'Bench');
+ assert.equal(sample([older,newer],{flagResolutions:{[player]:{through:older.endTime}}}).status,'Bench');
+ assert.equal(sample([older,{...newer,final:false}]).kick,false);
+ assert.equal(sample([older,{...newer,rosterComplete:false}]).kick,false);
+}
+const regularMiss=war('w0','Regular',0);
+assert.equal(sample([regularMiss,war('w1','CWL',null),war('w2','CWL',0)]).status,'Kick','A sit-out does not reset the shared streak');
+assert.equal(sample([regularMiss,war('w1','CWL',1)]).streak,0);
+assert.equal(sample([missed,war('w1','Regular',1)]).streak,0);
+assert.equal(sample([regularMiss,war('w1','CWL',1),war('w2','CWL',0)]).status,'Possible kick');
+assert.equal(sample([regularMiss,war('w1','CWL',null,{rosterComplete:false}),war('w2','CWL',0)]).kick,false,'An unknown round cannot establish consecutive misses');
+assert.equal(sample([regularMiss,war('w1','CWL',0,{state:'inWar',final:false,endTime:'2026-11-10'})]).status,'Bench');
+console.log('Shared attendance passed: both miss orders, same-type pairs, bench, recovery, exceptions, reviews, sit-outs and incomplete results.');
 '''
         result = subprocess.run(
             ['node', '-e', program],
