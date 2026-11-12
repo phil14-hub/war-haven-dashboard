@@ -1,6 +1,6 @@
 const RecruitmentContacts=(()=>{
  const history=new Map(),invitedTags=new Set(),dismissedTags=new Set(),loaded=new Map(),cacheKey='war-haven-recruit-visits:'+data.clanTag,dismissKey='war-haven-recruit-dismissed:'+data.clanTag;
- let pending=[],started=false,dialog=null,saving=false,dismissalsReady=false,rerender=()=>{},loading=null,watched=[];
+ let pending=[],started=false,dialog=null,saving=false,dismissalsReady=false,rerender=()=>{},loading=null,loadError='',watched=[];
  const persist=()=>LeaderCache.set(cacheKey,pending);
  const valid=p=>p&&typeof p.id==='string'&&/^#[0289PYLQGRJCUV]{3,20}$/.test(p.tag)&&Number.isFinite(Date.parse(p.openedAt));
  const invited=tag=>invitedTags.has(tag),dismissed=tag=>dismissedTags.has(tag),ready=tag=>dismissalsReady&&(loaded.has(tag)||invited(tag));
@@ -70,10 +70,18 @@ const RecruitmentContacts=(()=>{
   });
  }
  async function load(tags,{force=false}={}){
-  watched=[...new Set(tags)].filter(t=>/^#[0289PYLQGRJCUV]{3,20}$/.test(t));
-  if(loading){await loading;return load(tags,{force:false});}
-  const needed=watched.filter(t=>force||!loaded.has(t)||Date.now()-loaded.get(t)>=60000);if(!needed.length)return;
-  loading=(async()=>{
+  const requested=[...new Set(tags)].filter(t=>/^#[0289PYLQGRJCUV]{3,20}$/.test(t));
+  watched=requested;
+  if(loading){
+   const active=loading;
+   await active.promise;
+   if(watched===requested&&requested.some(tag=>!active.tags.has(tag)&&!loaded.has(tag)))return load(requested);
+   return;
+  }
+  const needed=requested.filter(t=>force||!loaded.has(t)||Date.now()-loaded.get(t)>=60000);if(!needed.length)return;
+  loadError='';
+  const request={tags:new Set(needed)};
+  request.promise=(async()=>{
    try{
     // Short batches fit the API request size even for hundreds of weekly cards.
     for(let i=0;i<needed.length;i+=100){
@@ -82,11 +90,11 @@ const RecruitmentContacts=(()=>{
      for(const row of result.contacts)remember(row);
      for(const tag of batch)loaded.set(tag,Date.now());
     }
-    if($('recruit-contact-status'))$('recruit-contact-status').textContent='Invitation records stay saved across scans. Invited players are hidden for all leaders.';
-   }catch(error){if($('recruit-contact-status'))$('recruit-contact-status').textContent='Invitation history could not load: '+error.message+'. Use Retry invitation history.';}
-   finally{rerender();}
+   }catch(error){loadError='Invitation history could not load. '+error.message;}
   })();
-  try{await loading;}finally{loading=null;}
+  loading=request;
+  rerender();
+  try{await request.promise;}finally{loading=null;rerender();}
  }
- return {start,wire,load,status,invited,dismissed,dismiss,restoreDismissed,dismissedCount:()=>dismissedTags.size,ready};
+ return {start,wire,load,loadError:()=>loadError,status,invited,dismissed,dismiss,restoreDismissed,dismissedCount:()=>dismissedTags.size,ready};
 })();

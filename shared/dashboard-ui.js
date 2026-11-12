@@ -268,6 +268,20 @@ var WarHavenUI = /* @__PURE__ */ (() => {
       if (focus && root.contains(focus)) focus.focus({ preventScroll: true });
     }
   }
+  const rankedLeagueFamilies = new Set(['unranked','skeleton','barbarian','archer','wizard','valkyrie','witch','golem','pekka','titan','dragon','electro','legend']);
+  function weeklyLeagueBadges(report) {
+    if (!report) return;
+    for (const label of report.querySelectorAll('.league-distribution > span > b')) {
+      const family = label.textContent.trim().toLowerCase().replace(/\./g, '').split(/\s+/, 1)[0];
+      const row = label.closest('.league-distribution');
+      if (!rankedLeagueFamilies.has(family) || row.querySelector('.league-distribution-badge')) continue;
+      const badge = row.ownerDocument.createElement('i');
+      badge.className = 'league-distribution-badge';
+      badge.dataset.leagueBadge = family;
+      badge.setAttribute('aria-hidden', 'true');
+      row.prepend(badge);
+    }
+  }
   const bell = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>';
-  return { gameIcon, now, syncClock, esc, number, date, shortDate: (v) => date(v, preferences, true), apply, settingsFields, readSettings, chart, seasonDonations, wire, chartKeys, completion, meter, army, village, timers, bell, captureDraft, restoreDraft, busyForms };
+  return { gameIcon, now, syncClock, esc, number, date, shortDate: (v) => date(v, preferences, true), apply, settingsFields, readSettings, chart, seasonDonations, wire, chartKeys, completion, meter, army, village, timers, bell, captureDraft, restoreDraft, busyForms, weeklyLeagueBadges };
 })();

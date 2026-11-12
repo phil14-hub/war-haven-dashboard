@@ -14,6 +14,12 @@ html[data-theme=light] .recruit-available{color:#256443;border-color:#cfe7da;bac
 @media(max-width:360px){.recruit-card-actions{margin-left:auto}.recruit-identity{row-gap:6px}}
 
 .recruit-contact-controls button[hidden]{display:none!important}
+#recruit-week-field[hidden],.recruit-loading[hidden],.recruit-contact-controls[hidden],#recruitment-results[hidden],#recruitment-count[hidden]{display:none!important}
+.recruit-loading{display:grid;grid-template-columns:24px minmax(0,1fr);align-items:center;gap:12px;max-width:420px;margin:18px auto;padding:18px}
+.recruit-loading-spinner{width:22px;height:22px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:recruit-loading-spin .8s linear infinite}
+.recruit-loading progress{grid-column:1/-1;display:block;width:100%;height:8px;accent-color:var(--gold)}
+@keyframes recruit-loading-spin{to{transform:rotate(1turn)}}
+@media(prefers-reduced-motion:reduce){.recruit-loading-spinner{animation:none}}
 .recruit-summary-filter{width:100%;min-width:0;min-height:100px;display:grid;grid-template-columns:28px minmax(0,1fr);align-items:start;gap:8px 12px;text-align:left;padding:18px;white-space:normal}
 .recruit-summary-filter>svg{width:24px;height:24px;color:var(--gold)}
 .recruit-summary-filter strong{display:block;font-size:28px;color:var(--gold);line-height:1.3;font-variant-numeric:tabular-nums}
@@ -25,3 +31,4 @@ html[data-theme=light] .recruit-available{color:#256443;border-color:#cfe7da;bac
 .recruit-summary-filters .recruit-summary-filter{min-height:100px}
 .recruit-history-card dl{font-size:13px}.recruit-history-card dl>div{margin:10px 0}.recruit-history-card dt{color:var(--muted)}.recruit-history-card dd{margin:0;overflow-wrap:anywhere}.recruit-history-card>.recruit-open{margin-top:auto}
 @media(max-width:400px){.recruit-summary-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.recruit-summary-filter{padding:12px;grid-template-columns:minmax(0,1fr);gap:5px}.recruit-summary-state{grid-column:1}.recruit-summary-filter>svg{width:20px;height:20px}}
+@media(max-width:430px){.recruit-filters :is(.recruit-sort-filter,#recruit-week-field){grid-column:1/-1}}
