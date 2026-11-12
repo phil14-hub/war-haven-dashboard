@@ -12,7 +12,7 @@ w.matchMedia=()=>({matches:false,addEventListener(){}});w.scrollTo=()=>{};w.HTML
 w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};w.prompt=()=>{throw Error('Attendance review must not prompt to clear flags');};
 w.warHavenSession={proof:async()=>''};w.warHavenIndividual=true;
 const state=JSON.parse($('war-data').textContent);state.sharedActions={enabled:true,url:w.location.origin,encryptionKey:Buffer.alloc(64,42).toString('base64')};$('war-data').textContent=JSON.stringify(state);
-$('recruiter-data').textContent=JSON.stringify({updatedAt:state.lastSuccessfulSync,groups:{new:[{tag:'#P0C',name:'Recruit fixture',townHallLevel:14,lifecycle:'NEW',detectedAt:new Date().toISOString()}],still:[],joined_my:[],no_longer:[]}});
+$('recruiter-data').textContent=JSON.stringify({updatedAt:state.lastSuccessfulSync,groups:{new:[{tag:'#P0C',name:'Recruit fixture',townHallLevel:14,leagueTierScore:25,leagueTierName:'Titan League 25',lifecycle:'NEW',detectedAt:new Date().toISOString()}],still:[],joined_my:[],no_longer:[]}});
 let readXp=false,request=null,failContact=false;const contacts=[];
 w.fetch=async(input,options={})=>{
  const path=new URL(input,w.location.href).pathname,body=JSON.parse(options.body||'{}');let value={};

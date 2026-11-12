@@ -5,7 +5,7 @@ import {webcrypto} from 'node:crypto';
 import {JSDOM,VirtualConsole} from 'jsdom';
 
 const base=Date.now(),day=86400000,tag=i=>'#P'+i.toString(2).padStart(9,'0').replaceAll('0','P').replaceAll('1','Q');
-const candidate=(i,age=1)=>({tag:tag(i),name:'Recruit '+i,townHallLevel:14,warStars:400,detectedAt:new Date(base-age*day).toISOString(),lastVerifiedAt:new Date(base).toISOString(),lifecycle:'STILL_CLANLESS'});
+const candidate=(i,age=1)=>({tag:tag(i),name:'Recruit '+i,townHallLevel:14,warStars:400,leagueTierScore:26,leagueTierName:'Titan League 26',detectedAt:new Date(base-age*day).toISOString(),lastVerifiedAt:new Date(base).toISOString(),lifecycle:'STILL_CLANLESS'});
 const report={updatedAt:new Date(base).toISOString(),groups:{new:[candidate(0)],still:Array.from({length:204},(_,i)=>candidate(i+1)),joined_my:[candidate(400,8)],no_longer:[candidate(401,8),candidate(1)]}};
 report.groups.still.push(candidate(402,6.9));
 const shared=[{id:crypto.randomUUID(),player_tag:tag(0),invited:0,answered_at:new Date(base).toISOString(),actor_name:'Fixture'}],invited=new Set([tag(0)]);

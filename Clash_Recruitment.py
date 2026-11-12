@@ -1423,16 +1423,30 @@ def set_lifecycle(rec, new_lifecycle, reason=None, at=None):
         add_event(rec, "status_changed", at=at, old=old, new=new_lifecycle, reason=reason)
 
 
-def update_profile_fields(rec, player):
-    rec["name"] = player.get("name") or rec.get("name", "")
-    rec["townHallLevel"] = safe_int(player.get("townHallLevel"))
-    rec["expLevel"] = safe_int(player.get("expLevel"))
-    rec["trophies"] = safe_int(player.get("trophies"))
-    rec["bestTrophies"] = safe_int(player.get("bestTrophies"))
-    rec["warStars"] = safe_int(player.get("warStars"))
-    rec["attackWins"] = safe_int(player.get("attackWins"))
-    rec["defenseWins"] = safe_int(player.get("defenseWins"))
+def save_trophy_observation(rec, player, observed_at):
+    """Retain the last reading in each of the two most recent ranked weeks."""
+    history = rec.get("trophyHistory")
+    if not isinstance(history, list):
+        history = [{"at": rec.get("lastVerifiedAt"), "trophies": rec.get("trophies")}]
+    current = {"at": observed_at, "trophies": player.get("trophies")}
+    weeks = {}
+    for sample in [*history, current]:
+        if not isinstance(sample, dict):
+            continue
+        at, count = parse_iso(sample.get("at")), sample.get("trophies")
+        if at is None or type(count) is not int or count < 0:
+            continue
+        # Align with the Weekly Report boundary of Monday at 05:00 UTC.
+        shifted = at - timedelta(hours=5)
+        week = shifted.date() - timedelta(days=shifted.weekday())
+        if week not in weeks or at >= weeks[week][0]:
+            weeks[week] = (at, {"at": sample["at"], "trophies": count})
+    rec["trophyHistory"] = [weeks[week][1] for week in sorted(weeks)[-2:]]
+    if rec["trophyHistory"]:
+        rec["trophies"] = rec["trophyHistory"][-1]["trophies"]
 
+
+def update_league_fields(rec, player):
     league = player.get("league") or {}
     tier = player.get("leagueTier") or {}
     rec["leagueName"] = league.get("name", "") if isinstance(league, dict) else ""
@@ -1443,6 +1457,18 @@ def update_profile_fields(rec, player):
     if not rec["leagueTierName"]:
         rec["leagueTierName"] = league_tier_label(rec["leagueTierScore"]) if rec["leagueTierScore"] else "Unranked"
 
+
+def update_profile_fields(rec, player, observed_at):
+    rec["name"] = player.get("name") or rec.get("name", "")
+    rec["townHallLevel"] = safe_int(player.get("townHallLevel"))
+    rec["expLevel"] = safe_int(player.get("expLevel"))
+    save_trophy_observation(rec, player, observed_at)
+    rec["lastVerifiedAt"] = observed_at
+    rec["bestTrophies"] = safe_int(player.get("bestTrophies"))
+    rec["warStars"] = safe_int(player.get("warStars"))
+    rec["attackWins"] = safe_int(player.get("attackWins"))
+    rec["defenseWins"] = safe_int(player.get("defenseWins"))
+    update_league_fields(rec, player)
     rec["profileLink"] = profile_link(rec.get("tag"))
 
 
@@ -1553,8 +1579,11 @@ def sync_my_clan_membership(api, leaver_store, my_clan_tag, profile_cache=None):
                 rec["townHallLevel"] = safe_int(member.get("townHallLevel"))
             if member.get("expLevel") is not None:
                 rec["expLevel"] = safe_int(member.get("expLevel"))
-            if member.get("trophies") is not None:
-                rec["trophies"] = safe_int(member.get("trophies"))
+            save_trophy_observation(rec, member, now)
+            if isinstance(member.get("leagueTier"), dict):
+                update_league_fields(rec, {**member, "league": member.get("league") or {
+                    "name": rec.get("leagueName"), "id": rec.get("leagueId")
+                }})
             rec["lastVerifiedAt"] = now
             set_current_clan_state(
                 rec,
@@ -1589,8 +1618,7 @@ def sync_my_clan_membership(api, leaver_store, my_clan_tag, profile_cache=None):
             continue
 
         check_time = iso_now()
-        rec["lastVerifiedAt"] = check_time
-        update_profile_fields(rec, player)
+        update_profile_fields(rec, player, check_time)
         current_clan = player.get("clan")
         if current_clan:
             set_current_clan_state(
@@ -1712,8 +1740,7 @@ def process_departures(api, departures, leaver_store, filters, cooldown_days, ru
         rec["sourceClanTag"] = d.get("sourceClanTag", "")
         rec["sourceClanName"] = d.get("sourceClanName", "")
         rec["lastDetectedRunId"] = run_id
-        rec["lastVerifiedAt"] = now
-        update_profile_fields(rec, player)
+        update_profile_fields(rec, player, now)
 
         add_event(
             rec,
@@ -1814,8 +1841,7 @@ def reverify_active_candidates(api, leaver_store, filters, active_days, profile_
             continue
 
         now = iso_now()
-        rec["lastVerifiedAt"] = now
-        update_profile_fields(rec, player)
+        update_profile_fields(rec, player, now)
         current_clan = player.get("clan")
 
         previous_lifecycle = rec.get("lifecycle")
@@ -1881,6 +1907,7 @@ def candidate_row(rec, now=None):
         "townHallLevel": safe_int(rec.get("townHallLevel")),
         "expLevel": safe_int(rec.get("expLevel")),
         "trophies": safe_int(rec.get("trophies")),
+        **({"trophyHistory": rec["trophyHistory"]} if isinstance(rec.get("trophyHistory"), list) else {}),
         "bestTrophies": safe_int(rec.get("bestTrophies")),
         "warStars": safe_int(rec.get("warStars")),
         "attackWins": safe_int(rec.get("attackWins")),

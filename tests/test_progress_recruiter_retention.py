@@ -63,6 +63,18 @@ class RestoredProgressTests(unittest.TestCase):
 
 
 class RecruitRetentionTests(unittest.TestCase):
+    def test_weekly_trophy_observations_survive_reset_and_incomplete_profiles(self):
+        record = {"lastVerifiedAt": "2026-11-09T04:59:59Z", "trophies": 712}
+        recruiter.update_profile_fields(record, {"trophies": 0}, "2026-11-09T05:00:00Z")
+        self.assertEqual([sample["trophies"] for sample in record["trophyHistory"]], [712, 0])
+        recruiter.update_profile_fields(record, {}, "2026-11-09T06:00:00Z")
+        self.assertEqual(record["trophyHistory"][-1], {"at": "2026-11-09T05:00:00Z", "trophies": 0})
+        recruiter.update_profile_fields(record, {"trophies": 90}, "2026-11-10T10:00:00Z")
+        recruiter.save_trophy_observation(record, {"trophies": 50}, "2026-11-10T09:00:00Z")
+        self.assertEqual(record["trophies"], 90)
+        recruiter.update_profile_fields(record, {"trophies": 26}, "2026-11-16T05:00:00Z")
+        self.assertEqual([sample["trophies"] for sample in recruiter.candidate_row(record)["trophyHistory"]], [90, 26])
+
     def test_ever_joined_history_outlives_seven_day_candidate_cards(self):
         joined=self.rec(401,days=30,lifecycle='JOINED_MY_CLAN')
         left=self.rec(402,days=60,lifecycle='JOINED_OTHER_CLAN')
