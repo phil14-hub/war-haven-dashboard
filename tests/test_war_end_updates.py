@@ -186,6 +186,26 @@ class GateTests(unittest.TestCase):
     def test_gate_skips_distant_target(self):
         self.assertFalse(self.invoke(fixture(end=NOW + timedelta(hours=1)), lambda: NOW))
 
+    def test_signed_watcher_can_trigger_one_time_score_setup(self):
+        state = fixture(end=NOW + timedelta(hours=1))
+        fake = SimpleNamespace(DEFAULT_CLAN_TAG=tracker.DEFAULT_CLAN_TAG,
+                               decrypt_history=lambda envelope, password: state)
+        calls = []
+        def request(path, data):
+            calls.append((path, data))
+            return {'needsSetup': True}
+        with patch.object(shared_actions, 'ENABLED', True), \
+             patch.object(shared_actions, 'pending', return_value=None), \
+             patch.object(shared_actions, 'Client', return_value=SimpleNamespace(request=request)), \
+             patch.object(github_war_check, 'load_tracker', return_value=fake), \
+             patch.object(Path, 'read_text', return_value='{}'), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(github_war_check.check({
+                'DASHBOARD_PASSWORD': 'fixture-only',
+                'ACTIONS_ID_TOKEN_REQUEST_URL': 'https://example.invalid/oidc',
+            }, now=lambda: NOW, wait=True))
+        self.assertEqual(calls, [('/members/api/war-score-credential', {'read': True})])
+
     def test_gate_can_wake_in_the_five_minute_grace_period(self):
         self.assertTrue(self.invoke(fixture(), lambda: NOW + timedelta(minutes=1)))
 
