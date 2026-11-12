@@ -47,6 +47,19 @@ def load_tracker():
     return module
 
 
+def configure_live_war_score(env, route, client):
+    if not (shared_actions.ENABLED and env.get('ACTIONS_ID_TOKEN_REQUEST_URL')):
+        return
+    try:
+        result = client.request('/members/api/war-score-credential', {
+            'token': env['COC_API_TOKEN'].strip(), 'route': route,
+        })
+        if result.get('configured') is True:
+            print('Portal live war score connection verified.')
+    except shared_actions.SharedActionsError:
+        print('::warning::The portal live war score connection could not be verified. Clan collection continues.')
+
+
 def run(env=None, tracker=None, *, post_war=False):
     env = os.environ if env is None else env
     config, route = settings(env)
@@ -58,6 +71,7 @@ def run(env=None, tracker=None, *, post_war=False):
     with phase("restore-and-verify"):
         tracker.pull_github_history(state, config)
     client = shared_actions.Client(config['password'])
+    configure_live_war_score(env, route, client)
     shared_request = None
     if shared_actions.ENABLED:
         shared_request = shared_actions.pending(client, 'clan')

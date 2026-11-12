@@ -32,6 +32,15 @@ def check(env=None, *, wait=False, now=None, sleep=time.sleep):
     clock = now or (lambda: datetime.now(timezone.utc))
     target = next_update(state, clock())
     if target is None or target > clock() + timedelta(minutes=5):
+        # A setup-only capture job has the existing Clash key. The watcher
+        # uses its signed identity to check whether that job is needed.
+        if shared_actions.ENABLED and env.get('ACTIONS_ID_TOKEN_REQUEST_URL'):
+            try:
+                if client.request('/members/api/war-score-credential', {'read': True}).get('needsSetup') is True:
+                    print('The portal needs its one-time live war score setup.')
+                    return True
+            except shared_actions.SharedActionsError:
+                print('::warning::Live score setup status could not be checked.')
         print('No recorded war needs its final-results update yet.')
         return False
     if wait:
