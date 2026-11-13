@@ -11,6 +11,7 @@ on:
     paths: [index.html, data/war_tracker_state.enc.json, .github/workflows/sync-portal.yml]
   schedule:
     - cron: '17,47 * * * *'
+    - cron: '8 17 * * *'
 permissions:
   contents: read
   actions: read
@@ -21,7 +22,7 @@ concurrency:
   queue: single
 jobs:
   maintenance:
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event.schedule != '8 17 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -43,7 +44,7 @@ jobs:
       group: war-haven-clan-update
       cancel-in-progress: false
       queue: max
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event.schedule != '8 17 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -73,7 +74,7 @@ jobs:
           COLLECTOR_JOB_STATUS: ${{ job.status }}
         run: python github_health.py --kind portal --status "$COLLECTOR_JOB_STATUS"
   backup-clan-archive:
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true'
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && (github.event_name != 'schedule' || github.event.schedule == '8 17 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 7
     concurrency:
