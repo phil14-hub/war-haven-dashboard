@@ -1,5 +1,8 @@
 import contextlib
+import base64
+import hashlib
 import io
+import json
 import threading
 import unittest
 from pathlib import Path
@@ -11,6 +14,7 @@ import github_collector
 import github_recruitment_collector
 import github_render_dashboard
 import github_dispatch
+import github_sync_portal
 import shared_actions
 
 
@@ -77,6 +81,38 @@ class SyncPerformance(unittest.TestCase):
         with patch.object(shared_actions,'Client',return_value=client),contextlib.redirect_stdout(io.StringIO()) as out:
             github_dispatch.configure({'GITHUB_REPOSITORY':'phil14-hub/war-haven-dashboard','DASHBOARD_PUBLISH_TOKEN':'secret-fixture'})
         self.assertEqual(calls,[('/members/api/refresh-dispatch',{'token':'secret-fixture'})]);self.assertNotIn('secret-fixture',out.getvalue())
+
+    def test_private_backup_uploads_the_exact_verified_archive_once_per_day(self):
+        config = {'repository': 'fixture', 'password': 'fixture-passphrase'}
+        state = tracker.new_state(tracker.DEFAULT_CLAN_TAG)
+        body = json.dumps(tracker.encrypt_history(state, config['password'], rounds=100000)).encode()
+        sha = hashlib.sha1(b'blob ' + str(len(body)).encode() + b'\0' + body).hexdigest()
+        checksum = hashlib.sha256(body).hexdigest()
+        commit = 'a' * 40
+        calls = []
+
+        def request(path, *, method='POST', **options):
+            calls.append((path, method, options))
+            if method == 'HEAD':
+                return len(calls) > 2
+            return {'status': 'saved', 'day': '2030-01-01', 'bytes': len(body), 'sha256': checksum, 'source': commit}
+
+        client = SimpleNamespace(request=request)
+        blob = {'sha': sha, 'encoding': 'base64', 'content': base64.encodebytes(body).decode()}
+        with patch.object(tracker, 'github_request', return_value=blob) as api, contextlib.redirect_stdout(io.StringIO()):
+            for _ in range(2):
+                github_sync_portal.backup_clan_archive(config, tracker, client, commit, sha)
+        api.assert_called_once_with(config, 'GET', '/repos/fixture/git/blobs/' + sha)
+        endpoint = '/members/api/clan-archive-backup'
+        self.assertEqual(calls, [(endpoint, 'HEAD', {}), (endpoint, 'POST', {'body': body, 'extra_headers': {
+            'X-Archive-SHA256': checksum, 'X-Archive-Source': commit}}), (endpoint, 'HEAD', {})])
+
+        wrong = {**blob, 'content': base64.b64encode(body + b' ').decode()}
+        calls.clear()
+        with patch.object(tracker, 'github_request', return_value=wrong), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(ValueError, 'did not match'):
+                github_sync_portal.backup_clan_archive(config, tracker, client, commit, sha)
+        self.assertEqual(calls, [(endpoint, 'HEAD', {})])
 
 
 if __name__=='__main__':unittest.main()

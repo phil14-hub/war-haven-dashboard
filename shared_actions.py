@@ -15,7 +15,7 @@ BACKEND_URL = 'https://portal.warhavenclan.com'
 # The service requires current dashboard-passphrase proof on every data/action request.
 ENABLED = True
 CONTEXT = b'WarHavenSharedEdit:v1'
-MACHINE_PATHS = ('/members/api/refresh-dispatch', '/members/api/publication-source', '/members/api/ingest', '/members/api/maintenance', '/members/api/collector-health', '/members/api/war-score-credential', '/v1/refresh/request', '/v1/refresh/claim',
+MACHINE_PATHS = ('/members/api/refresh-dispatch', '/members/api/publication-source', '/members/api/ingest', '/members/api/maintenance', '/members/api/collector-health', '/members/api/war-score-credential', '/members/api/clan-archive-backup', '/v1/refresh/request', '/v1/refresh/claim',
                  '/v1/refresh/progress', '/v1/refresh/finish', '/v1/refresh/reconcile')
 
 
@@ -30,7 +30,7 @@ class Client:
         self.machine_token = None
         self.machine_until = 0
 
-    def request(self, path, payload=None, retry=True):
+    def request(self, path, payload=None, retry=True, *, body=None, extra_headers=None, method='POST'):
         try:
             if path != '/v1/challenge' and path not in MACHINE_PATHS and not self.proof:
                 challenge = self.request('/v1/challenge')
@@ -42,6 +42,7 @@ class Client:
                 self.proof = base64.b64encode(raw[32:]).decode()
             headers = {'Content-Type': 'application/json',
                        'User-Agent': 'WarHavenDashboard/1.22 (+https://github.com/phil14-hub/war-haven-dashboard)'}
+            headers.update(extra_headers or {})
             if self.proof:
                 headers['X-War-Haven-Proof'] = self.proof
             if path in MACHINE_PATHS:
@@ -56,20 +57,23 @@ class Client:
                         self.machine_token = json.load(response)['value']
                     self.machine_until = time.time() + 240
                 headers['Authorization'] = 'Bearer ' + self.machine_token
-            request = Request(BACKEND_URL + path,
-                              data=json.dumps(payload or {}).encode(),
-                              headers=headers, method='POST')
+            data = body
+            if method == 'POST' and data is None:
+                data = json.dumps(payload or {}).encode()
+            request = Request(BACKEND_URL + path, data=data, headers=headers, method=method)
             # A complete encrypted recovery snapshot can outlast ordinary reads.
             # Keep collector authorization and the shorter timeout elsewhere.
-            timeout = 120 if path == '/members/api/maintenance' else 15
+            timeout = 120 if path in ('/members/api/maintenance', '/members/api/clan-archive-backup') else 15
             with urlopen(request, timeout=timeout) as response:
-                return json.load(response)
+                return True if method == 'HEAD' else json.load(response)
         except HTTPError as error:
             status = error.code
             error.close()
+            if status == 404 and method == 'HEAD':
+                return False
             if status == 401 and retry:
                 self.proof = None
-                return self.request(path, payload, retry=False)
+                return self.request(path, payload, retry=False, body=body, extra_headers=extra_headers, method=method)
             raise SharedActionsError('Shared service request failed (HTTP ' + str(status) + ').') from None
         except (ValueError, OSError, KeyError, TypeError):
             raise SharedActionsError('Shared service is temporarily unavailable.') from None

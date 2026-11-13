@@ -1,6 +1,9 @@
 """Retry member and leadership portal publication without collecting Clash data."""
 import base64
+import hashlib
+import json
 import os
+import re
 import tempfile
 from pathlib import Path
 import github_collector
@@ -9,6 +12,37 @@ import shared_actions
 import snapshot_audit
 import argparse
 from publication_sync import phase,record as record_publication
+
+
+def backup_clan_archive(config, tracker, client, commit, archive_sha):
+    """Copy a verified Git archive to the private daily backup, keeping Git authoritative."""
+    with phase('clan-archive-backup'):
+        endpoint = '/members/api/clan-archive-backup'
+        if client.request(endpoint, method='HEAD'):
+            print('A verified encrypted clan archive backup already exists for today.')
+            return
+        root = '/repos/' + config['repository']
+        record = tracker.github_request(config, 'GET', root + '/git/blobs/' + archive_sha)
+        if record.get('encoding') != 'base64' or record.get('sha') != archive_sha:
+            raise ValueError('The encrypted Git archive was not returned.')
+        body = base64.b64decode(''.join(record['content'].split()), validate=True)
+        git_sha = hashlib.sha1(b'blob ' + str(len(body)).encode() + b'\0' + body).hexdigest()
+        if git_sha != archive_sha:
+            raise ValueError('The archive did not match its saved Git revision.')
+        state = tracker.decrypt_history(json.loads(body), config['password'])
+        if tracker.normalize_tag(state.get('clanTag')) != tracker.DEFAULT_CLAN_TAG:
+            raise ValueError('The archive belongs to a different clan.')
+        checksum = hashlib.sha256(body).hexdigest()
+        saved = client.request(endpoint, body=body, extra_headers={
+            'X-Archive-SHA256': checksum,
+            'X-Archive-Source': commit,
+        })
+        if saved.get('status') != 'saved' or not re.fullmatch('[a-f0-9]{64}', saved.get('sha256') or ''):
+            raise ValueError('The private daily clan archive backup was not confirmed.')
+        if saved.get('reused') is not True and (saved['sha256'] != checksum or saved.get('source') != commit or
+                                               saved.get('bytes') != len(body)):
+            raise ValueError('The private daily clan archive backup did not match the verified archive.')
+        print('Encrypted clan archive backup confirmed for ' + saved['day'] + ' (' + str(saved['bytes']) + ' bytes).')
 
 
 def pages_contains_publication(config, tracker, page_sha, history_sha):
@@ -30,7 +64,7 @@ def pages_contains_publication(config, tracker, page_sha, history_sha):
     return False
 
 
-def run(env=None, tracker=None):
+def run(env=None, tracker=None, *, backup_archive=False):
     env = os.environ if env is None else env
     repository = env.get('GITHUB_REPOSITORY')
     if repository != 'phil14-hub/war-haven-dashboard':
@@ -42,6 +76,9 @@ def run(env=None, tracker=None):
     client=shared_actions.Client(config['password'])
     archive_meta=tracker.github_history_record(config,ref=head)
     if not archive_meta:raise ValueError('The saved clan archive is missing. No publication was made.')
+    if backup_archive:
+        backup_clan_archive(config, tracker, client, head, archive_meta['sha'])
+        return
     record=tracker.github_request(config,'GET','/repos/'+repository+'/contents/index.html?ref='+head)
     pair={'pageSha':record['sha'],'historySha':archive_meta['sha'],'commit':head}
     config['_publication_pair']=pair
@@ -98,11 +135,14 @@ def maintenance(env=None):
 if __name__ == '__main__':
     try:
         parser=argparse.ArgumentParser(description=__doc__)
-        parser.add_argument('--maintenance-only',action='store_true')
-        if parser.parse_args().maintenance_only:
+        mode = parser.add_mutually_exclusive_group()
+        mode.add_argument('--maintenance-only',action='store_true')
+        mode.add_argument('--backup-clan-archive',action='store_true')
+        args = parser.parse_args()
+        if args.maintenance_only:
             maintenance()
         else:
-            run()
+            run(backup_archive=args.backup_clan_archive)
     except Exception as error:
         print('Portal synchronization retained the previous complete publication ('+type(error).__name__+').')
         raise SystemExit(1)
