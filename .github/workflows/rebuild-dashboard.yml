@@ -19,6 +19,7 @@ on:
       - upgrade_catalog.json
       - github_dispatch.py
       - github_render_dashboard.py
+      - github_recruiter.py
       - member_exports.py
       - snapshot_audit.py
       - .github/workflows/rebuild-dashboard.yml
