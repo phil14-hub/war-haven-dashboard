@@ -23,6 +23,17 @@ def load_recruiter():
     return module
 
 
+def compact_report(report):
+    """Keep the standalone report only when it is the sole saved format."""
+    groups = report.get('groups')
+    if report.get('version') != 1 or not isinstance(groups, dict):
+        return report
+    if not all(isinstance(groups.get(name), list) for name in ('new', 'still', 'joined_my', 'no_longer')):
+        return report
+    # Older Pyto trackers use the string field to recognize a cloud report.
+    return {**report, 'html': ''}
+
+
 def rebuild_report(state, *, module=None):
     """Recover all recent cards from retained records without another API scan."""
     saved = state.get('recruiter') or {}
@@ -32,14 +43,19 @@ def rebuild_report(state, *, module=None):
     report = saved.get('report') or {}
     filters = stats.get('filters') or report.get('filters')
     if not isinstance(store.get('players'), dict) or not isinstance(filters, dict):
+        if 'report' in saved:
+            saved['report'] = compact_report(report)
         return
     module = module or load_recruiter()
     groups = module.build_result_groups(store, filters, 7, 7, 50, stats.get('runId'))
     counts = {'newCandidatesShown': len(groups['new']), 'stillAvailableShown': len(groups['still']),
               'joinedMyClanCurrent': len(groups['joined_my'])}
-    saved['report'] = {**report, 'groups': {key: [module.clean_row(row) for row in groups[key]]
-                      for key in ('new', 'still', 'joined_my', 'no_longer')},
-                       'stats': {**stats, **counts}}
+    saved['report'] = compact_report({
+        **report,
+        'groups': {key: [module.clean_row(row) for row in groups[key]]
+                   for key in ('new', 'still', 'joined_my', 'no_longer')},
+        'stats': {**stats, **counts},
+    })
     # Preserve the actual scan timestamp and every full archived player record.
     saved['summary'] = {**saved.get('summary', {}), 'newCandidates': counts['newCandidatesShown'],
                         'availableCandidates': counts['newCandidatesShown'] + counts['stillAvailableShown'],
@@ -100,7 +116,8 @@ def scan(previous, token, api_root, clan_tag, *, module=None, max_clans=1000):
             raise ValueError('The recruiter scan did not finish.')
         return {
             'format': 1, 'updatedAt': updated, 'files': retained,
-            'report': {**native, 'html': document, 'updatedAt': updated, 'source': 'Independent cloud recruitment scan'},
+            'report': compact_report({**native, 'html': document, 'updatedAt': updated,
+                                      'source': 'Independent cloud recruitment scan'}),
             'summary': {
                 'updatedAt': updated, 'baselineCreated': bool(stats.get('baselineCreated')),
                 'trackedClans': stats.get('trackedClanCount', 0),
