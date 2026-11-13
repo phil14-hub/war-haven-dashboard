@@ -126,6 +126,8 @@ See [Setup, passwords and recovery](SETUP.md) for the coordinated shared-passwor
 
 Portal retry first removes expired sessions, tokens, rate limits, MFA challenges and email-change requests independently of archive decoding. Identical publications reuse their generation. Generated delivery objects older than seven days may be removed, preserving the current and previous generations. Archives, war evidence and encrypted shared records are retained. Source changes run the release gate and rebuild saved history; they do not also start redundant clan and recruitment scans.
 
+The portal sync workflow also saves one verified encrypted clan archive per UTC day in private R2. It checks the Git blob and archive passphrase before uploading and retains 30 daily copies. This is separate from the website recovery backup for accounts and private plans. The collector still restores the Git archive and publishes through the existing GitHub Pages workflow during this migration stage.
+
 ## Sync performance
 
 Maintenance and release verification run outside the history writer lock. Pending portal retries and code rebuilds are coalesced, while clan/recruitment publications retain the shared writer lock and atomic archive commit. Dispatched request IDs prevent a late job from collecting an already-completed request again. CWL lookups use at most four concurrent requests; state merges remain ordered, final-war cache rules are retained and failed lookups keep saved evidence. If immediate dispatch is unavailable, the request remains saved for the scheduled fallback.
