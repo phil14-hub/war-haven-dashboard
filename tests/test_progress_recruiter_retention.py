@@ -30,6 +30,33 @@ class RestoredProgressTests(unittest.TestCase):
         self.assertEqual(browser['groups'], report['groups'])
         self.assertEqual(saved['recruiter']['report'], report)
 
+    def test_compacted_cloud_report_still_renders_after_encrypted_restore(self):
+        stamp = '2026-11-13T15:00:00Z'
+        report = {'version': 1, 'updatedAt': stamp, 'html': '<!doctype html><h1>Legacy report</h1>',
+                  'groups': {'new': [{'tag': '#P0Q'}], 'still': [], 'joined_my': [], 'no_longer': []},
+                  'joinedHistory': [{'tag': '#P0R'}], 'turnover': [{'clan': 'Fixture clan'}]}
+        saved = tracker.new_state('#P0Y')
+        saved['recruiter'] = {'format': 1, 'updatedAt': stamp, 'files': {'retained': {'#P0R': {'tag': '#P0R'}}},
+                              'report': report, 'summary': {'scannedClans': 1}}
+        github_recruiter.rebuild_report(saved)
+        self.assertEqual(saved['recruiter']['report'], {**report, 'html': ''})
+        archive = tracker.encrypt_history(saved, 'fixture-passphrase', rounds=100000)
+        restored = tracker.new_state('#P0Y')
+        tracker.apply_snapshot(restored, tracker.decrypt_history(archive, 'fixture-passphrase'))
+        self.assertEqual(restored['recruiter'], saved['recruiter'])
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / 'dashboard.html'
+            tracker.write_dashboard(restored, target, recruiter_html=target.with_name('absent.html'))
+            content = target.read_text()
+        browser = json.loads(re.search(r'id="recruiter-data" type="application/json">(.*?)</script>', content).group(1))
+        self.assertEqual(browser, {key: value for key, value in report.items() if key != 'html'})
+
+    def test_compaction_keeps_html_without_a_complete_structured_report(self):
+        legacy = {'html': '<!doctype html><h1>Only saved report</h1>', 'updatedAt': '2026-11-13T15:00:00Z'}
+        self.assertEqual(github_recruiter.compact_report(legacy), legacy)
+        incomplete = {**legacy, 'version': 1, 'groups': {'new': []}}
+        self.assertEqual(github_recruiter.compact_report(incomplete), incomplete)
+
     def test_archive_restore_rebuilds_army_without_api_or_fresh_timestamp(self):
         saved = tracker.new_state('#P0Y')
         saved['profiles'] = {'#P0Q': profile(18), '#P0R': profile(14, 13)}
@@ -120,12 +147,14 @@ class RecruitRetentionTests(unittest.TestCase):
         state = {'recruiter': {'updatedAt': '2030-01-09T00:00:00Z', 'files': {
             'detected_leavers.json': {'players': players},
             'last_run_stats.json': {'filters': self.filters}},
-            'report': {'version': 1, 'updatedAt': '2030-01-09T00:00:00Z', 'groups': {'still': []}}}}
+            'report': {'version': 1, 'updatedAt': '2030-01-09T00:00:00Z',
+                       'html': '<!doctype html><h1>Legacy report</h1>', 'groups': {'still': []}}}}
         before = copy.deepcopy(state['recruiter']['files'])
         with patch.object(recruiter, 'utc_now', return_value=self.now):
             github_recruiter.rebuild_report(state, module=recruiter)
         self.assertEqual(len(state['recruiter']['report']['groups']['still']), 125)
         self.assertEqual(state['recruiter']['report']['updatedAt'], '2030-01-09T00:00:00Z')
+        self.assertEqual(state['recruiter']['report']['html'], '')
         self.assertEqual(state['recruiter']['files'], before)
         self.assertEqual(state['recruiterSummary']['availableCandidates'], 125)
 

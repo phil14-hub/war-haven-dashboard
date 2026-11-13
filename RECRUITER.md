@@ -31,8 +31,10 @@ The complete recruiter state and report are stored inside
 `data/war_tracker_state.enc.json`, alongside the existing clan archive. They are
 encrypted with the existing dashboard password and published atomically with the
 website. Password changes therefore cover recruiting history too. The website
-receives the report and summary; the large monitored-roster baseline stays out
-of its browser payload.
+receives the structured report and summary; the large monitored-roster baseline
+stays out of its browser payload. When the complete structured report exists,
+the archive drops its duplicate standalone HTML. HTML-only reports remain
+readable, and the standalone phone recruiter still creates its HTML file.
 
 Expired and invited cards leave the active list; full archived player records and shared invitation responses remain saved. Invitation history is loaded before cards appear and refreshed while the recruiter is open. Saved profiles also rebuild army completion during archive restore and code-only publication, retaining their actual observation timestamps.
 
