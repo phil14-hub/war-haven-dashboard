@@ -12,10 +12,11 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 BACKEND_URL = 'https://portal.warhavenclan.com'
+CLAN_ARCHIVE_BACKUP_PATH = '/members/api/clan-archive-backup'
 # The service requires current dashboard-passphrase proof on every data/action request.
 ENABLED = True
 CONTEXT = b'WarHavenSharedEdit:v1'
-MACHINE_PATHS = ('/members/api/refresh-dispatch', '/members/api/publication-source', '/members/api/ingest', '/members/api/maintenance', '/members/api/collector-health', '/members/api/war-score-credential', '/members/api/clan-archive-backup', '/v1/refresh/request', '/v1/refresh/claim',
+MACHINE_PATHS = ('/members/api/refresh-dispatch', '/members/api/publication-source', '/members/api/ingest', '/members/api/maintenance', '/members/api/collector-health', '/members/api/war-score-credential', CLAN_ARCHIVE_BACKUP_PATH, '/v1/refresh/request', '/v1/refresh/claim',
                  '/v1/refresh/progress', '/v1/refresh/finish', '/v1/refresh/reconcile')
 
 
@@ -32,7 +33,8 @@ class Client:
 
     def request(self, path, payload=None, retry=True, *, body=None, extra_headers=None, method='POST'):
         try:
-            if path != '/v1/challenge' and path not in MACHINE_PATHS and not self.proof:
+            route = path.partition('?')[0]
+            if route != '/v1/challenge' and route not in MACHINE_PATHS and not self.proof:
                 challenge = self.request('/v1/challenge')
                 salt = base64.b64decode(challenge['salt'], validate=True)
                 rounds = challenge['rounds']
@@ -45,7 +47,7 @@ class Client:
             headers.update(extra_headers or {})
             if self.proof:
                 headers['X-War-Haven-Proof'] = self.proof
-            if path in MACHINE_PATHS:
+            if route in MACHINE_PATHS:
                 if not self.machine_token or time.time() > self.machine_until:
                     endpoint = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_URL', '')
                     bearer = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_TOKEN', '')
@@ -63,9 +65,18 @@ class Client:
             request = Request(BACKEND_URL + path, data=data, headers=headers, method=method)
             # A complete encrypted recovery snapshot can outlast ordinary reads.
             # Keep collector authorization and the shorter timeout elsewhere.
-            timeout = 120 if path in ('/members/api/maintenance', '/members/api/clan-archive-backup') else 15
+            timeout = 120 if route in ('/members/api/maintenance', CLAN_ARCHIVE_BACKUP_PATH) else 15
             with urlopen(request, timeout=timeout) as response:
-                return True if method == 'HEAD' else json.load(response)
+                if method == 'HEAD':
+                    return True
+                if method == 'GET' and route == CLAN_ARCHIVE_BACKUP_PATH:
+                    limit = 70 * 1024 * 1024
+                    contents = response.read(limit + 1)
+                    if len(contents) > limit:
+                        raise SharedActionsError('Encrypted clan archive response exceeds the supported size.')
+                    return {'body': contents, 'sha256': response.headers.get('X-Archive-SHA256'),
+                            'source': response.headers.get('X-Archive-Source')}
+                return json.load(response)
         except HTTPError as error:
             status = error.code
             error.close()

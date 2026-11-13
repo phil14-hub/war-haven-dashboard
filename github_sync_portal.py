@@ -5,7 +5,9 @@ import json
 import os
 import re
 import tempfile
+from datetime import date
 from pathlib import Path
+from urllib.parse import urlencode
 import github_collector
 import member_exports
 import shared_actions
@@ -14,12 +16,30 @@ import argparse
 from publication_sync import phase,record as record_publication
 
 
-def backup_clan_archive(config, tracker, client, commit, archive_sha):
+def read_clan_archive_backup(config, tracker, client, day=None):
+    """Verify a stored archive in memory without replacing any live data."""
+    endpoint = shared_actions.CLAN_ARCHIVE_BACKUP_PATH
+    if day:
+        endpoint += '?' + urlencode({'day': day})
+    saved = client.request(endpoint, method='GET')
+    body = saved['body']
+    if hashlib.sha256(body).hexdigest() != saved.get('sha256') or not re.fullmatch('[a-f0-9]{40}', saved.get('source') or ''):
+        raise ValueError('The private backup did not match its saved checksum and revision.')
+    state = tracker.decrypt_history(json.loads(body), config['password'])
+    if tracker.normalize_tag(state.get('clanTag')) != tracker.DEFAULT_CLAN_TAG:
+        raise ValueError('The private backup belongs to a different clan.')
+    print('Private clan archive restored and verified in memory (' + str(len(body)) + ' bytes).')
+    return body
+
+
+def backup_clan_archive(config, tracker, client, commit, archive_sha, *, verify_restore=False):
     """Copy a verified Git archive to the private daily backup, keeping Git authoritative."""
     with phase('clan-archive-backup'):
-        endpoint = '/members/api/clan-archive-backup'
+        endpoint = shared_actions.CLAN_ARCHIVE_BACKUP_PATH
         if client.request(endpoint, method='HEAD'):
             print('A verified encrypted clan archive backup already exists for today.')
+            if verify_restore:
+                read_clan_archive_backup(config, tracker, client)
             return
         root = '/repos/' + config['repository']
         record = tracker.github_request(config, 'GET', root + '/git/blobs/' + archive_sha)
@@ -43,6 +63,10 @@ def backup_clan_archive(config, tracker, client, commit, archive_sha):
                                                saved.get('bytes') != len(body)):
             raise ValueError('The private daily clan archive backup did not match the verified archive.')
         print('Encrypted clan archive backup confirmed for ' + saved['day'] + ' (' + str(saved['bytes']) + ' bytes).')
+        if verify_restore:
+            restored = read_clan_archive_backup(config, tracker, client, saved['day'])
+            if saved.get('reused') is not True and restored != body:
+                raise ValueError('The private backup did not match the uploaded bytes.')
 
 
 def pages_contains_publication(config, tracker, page_sha, history_sha):
@@ -64,7 +88,7 @@ def pages_contains_publication(config, tracker, page_sha, history_sha):
     return False
 
 
-def run(env=None, tracker=None, *, backup_archive=False):
+def run(env=None, tracker=None, *, backup_archive=False, verify_backup=False):
     env = os.environ if env is None else env
     repository = env.get('GITHUB_REPOSITORY')
     if repository != 'phil14-hub/war-haven-dashboard':
@@ -76,8 +100,8 @@ def run(env=None, tracker=None, *, backup_archive=False):
     client=shared_actions.Client(config['password'])
     archive_meta=tracker.github_history_record(config,ref=head)
     if not archive_meta:raise ValueError('The saved clan archive is missing. No publication was made.')
-    if backup_archive:
-        backup_clan_archive(config, tracker, client, head, archive_meta['sha'])
+    if backup_archive or verify_backup:
+        backup_clan_archive(config, tracker, client, head, archive_meta['sha'], verify_restore=verify_backup)
         return
     record=tracker.github_request(config,'GET','/repos/'+repository+'/contents/index.html?ref='+head)
     pair={'pageSha':record['sha'],'historySha':archive_meta['sha'],'commit':head}
@@ -138,11 +162,20 @@ if __name__ == '__main__':
         mode = parser.add_mutually_exclusive_group()
         mode.add_argument('--maintenance-only',action='store_true')
         mode.add_argument('--backup-clan-archive',action='store_true')
+        mode.add_argument('--verify-clan-archive-backup',action='store_true')
+        mode.add_argument('--verify-archive-day',type=date.fromisoformat)
         args = parser.parse_args()
         if args.maintenance_only:
             maintenance()
+        elif args.verify_archive_day:
+            env = os.environ
+            if env.get('GITHUB_REPOSITORY') != 'phil14-hub/war-haven-dashboard':
+                raise ValueError('Clan archive verification is restricted to War Haven.')
+            config = {'password': env['DASHBOARD_PASSWORD']}
+            read_clan_archive_backup(config, github_collector.load_tracker(), shared_actions.Client(config['password']),
+                                     args.verify_archive_day.isoformat())
         else:
-            run(backup_archive=args.backup_clan_archive)
+            run(backup_archive=args.backup_clan_archive, verify_backup=args.verify_clan_archive_backup)
     except Exception as error:
         print('Portal synchronization retained the previous complete publication ('+type(error).__name__+').')
         raise SystemExit(1)

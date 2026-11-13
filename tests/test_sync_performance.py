@@ -114,5 +114,24 @@ class SyncPerformance(unittest.TestCase):
                 github_sync_portal.backup_clan_archive(config, tracker, client, commit, sha)
         self.assertEqual(calls, [(endpoint, 'HEAD', {})])
 
+    def test_private_backup_restore_checks_checksum_and_archive_passphrase(self):
+        config = {'password': 'fixture-passphrase'}
+        state = tracker.new_state(tracker.DEFAULT_CLAN_TAG)
+        body = json.dumps(tracker.encrypt_history(state, config['password'], rounds=100000)).encode()
+        saved = {'body': body, 'source': 'a' * 40, 'sha256': hashlib.sha256(body).hexdigest()}
+        calls = []
+        def request(path, *, method):
+            calls.append((path, method))
+            return saved
+        client = SimpleNamespace(request=request)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(github_sync_portal.read_clan_archive_backup(config, tracker, client, '2030-01-01'), body)
+            with self.assertRaisesRegex(ValueError, 'passphrase'):
+                github_sync_portal.read_clan_archive_backup({'password': 'wrong-passphrase'}, tracker, client)
+            saved['body'] += b' '
+            with self.assertRaisesRegex(ValueError, 'checksum'):
+                github_sync_portal.read_clan_archive_backup(config, tracker, client)
+        self.assertEqual(calls[0], (shared_actions.CLAN_ARCHIVE_BACKUP_PATH + '?day=2030-01-01', 'GET'))
+
 
 if __name__=='__main__':unittest.main()

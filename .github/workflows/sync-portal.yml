@@ -1,6 +1,11 @@
 name: Synchronize member and leadership portal
 on:
   workflow_dispatch:
+    inputs:
+      archive_day:
+        description: UTC backup date to verify (YYYY-MM-DD)
+        required: false
+        type: string
   push:
     branches: [main]
     paths: [index.html, data/war_tracker_state.enc.json, .github/workflows/sync-portal.yml]
@@ -89,4 +94,13 @@ jobs:
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: python github_sync_portal.py --backup-clan-archive
+          EVENT_NAME: ${{ github.event_name }}
+          ARCHIVE_DAY: ${{ inputs.archive_day }}
+        run: |
+          if [ -n "$ARCHIVE_DAY" ]; then
+            python github_sync_portal.py --verify-archive-day "$ARCHIVE_DAY"
+          elif [ "$EVENT_NAME" = schedule ]; then
+            python github_sync_portal.py --backup-clan-archive
+          else
+            python github_sync_portal.py --verify-clan-archive-backup
+          fi
