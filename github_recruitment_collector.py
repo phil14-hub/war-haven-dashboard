@@ -9,12 +9,16 @@ import github_recruiter
 import shared_actions
 import member_exports
 import snapshot_audit
+from clan_storage import StagedClanStorage, StagedUpdate, staging_enabled
 
 
 def run(env=None, tracker=None):
     env = os.environ if env is None else env
     config, route = github_collector.settings(env)
     tracker = github_collector.load_tracker() if tracker is None else tracker
+    if staging_enabled(env):
+        staged = StagedUpdate(StagedClanStorage(), tracker, config)
+        return collect(env, tracker, config, route, staged.state, staged, staged=staged)
     state = tracker.new_state(tracker.DEFAULT_CLAN_TAG)
     tracker.pull_github_history(state, config)
     client = shared_actions.Client(config['password'])
@@ -31,9 +35,9 @@ def run(env=None, tracker=None):
         raise
 
 
-def collect(env, tracker, config, route, state, request):
+def collect(env, tracker, config, route, state, request, *, staged=None):
     candidate = copy.deepcopy(state)
-    if shared_actions.ENABLED:
+    if shared_actions.ENABLED and staged is None:
         shared_actions.pull(candidate, request.client, tracker)
     request.progress('collecting', 20)
     github_recruiter.refresh(candidate, env, github_collector.API_ROUTES[route])
@@ -47,6 +51,8 @@ def collect(env, tracker, config, route, state, request):
         dashboard = Path(folder) / 'index.html'
         tracker.write_dashboard(candidate, dashboard, password=config['password'])
         request.progress('deploying', 90)
+        if staged is not None:
+            return staged.save(candidate, dashboard, source=env.get('GITHUB_SHA'), view=view)
         result = tracker.publish_dashboard(config, dashboard, state=candidate, wait_seconds=0)
         try:
             publication=member_exports.publish(candidate, dashboard, request.client, config['password'], tracker, view=view)

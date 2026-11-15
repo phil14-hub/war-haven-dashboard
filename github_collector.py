@@ -1,5 +1,6 @@
 """Run the existing tracker in GitHub Actions without interactive Pyto setup."""
 import argparse
+from clan_storage import StagedClanStorage, StagedUpdate, staging_enabled
 import copy
 import importlib.util
 import os
@@ -65,6 +66,14 @@ def run(env=None, tracker=None, *, post_war=False):
     config, route = settings(env)
     tracker = load_tracker() if tracker is None else tracker
     tracker.API_ROOT = API_ROUTES[route]
+    if staging_enabled(env):
+        with phase('restore-staged-archive'):
+            staged = StagedUpdate(StagedClanStorage(), tracker, config)
+        due = next_update(staged.state) if post_war else None
+        if post_war and (due is None or due > datetime.now(timezone.utc)):
+            print('The verified staged archive has no due final-war update.')
+            return {'skipped': True}
+        return collect(env, tracker, config, route, staged.state, post_war=post_war, request=staged, staged=staged)
     state = tracker.new_state(tracker.DEFAULT_CLAN_TAG)
     # Verify and restore the latest archive before asking Clash for new data.
     # Any decryption/download failure aborts without a publication.
@@ -95,9 +104,9 @@ def run(env=None, tracker=None, *, post_war=False):
         raise
 
 
-def collect(env, tracker, config, route, state, *, post_war, request):
+def collect(env, tracker, config, route, state, *, post_war, request, staged=None):
     candidate = copy.deepcopy(state)
-    if shared_actions.ENABLED:
+    if shared_actions.ENABLED and staged is None:
         shared_actions.pull(candidate, request.client, tracker)
     request.progress('collecting', 20)
     print('Collecting clan data independently; the saved recruitment scan is retained.')
@@ -124,6 +133,9 @@ def collect(env, tracker, config, route, state, *, post_war, request):
         with phase('render-and-encrypt'):
             tracker.write_dashboard(candidate, dashboard, password=config['password'])
         request.progress('deploying', 90)
+        if staged is not None:
+            with phase('save-staged-release'):
+                return staged.save(candidate, dashboard, source=env.get('GITHUB_SHA'), view=view)
         with phase('atomic-backup-commit'):
             result = tracker.publish_dashboard(config, dashboard, state=candidate, wait_seconds=0)
         try:

@@ -7,12 +7,22 @@ from pathlib import Path
 import time
 
 from github_collector import load_tracker
-from war_end_updates import next_update
+from clan_storage import StagedClanStorage, staging_enabled
+from war_end_updates import next_update, timestamp
 import shared_actions
 
 
 def check(env=None, *, wait=False, now=None, sleep=time.sleep):
     env = os.environ if env is None else env
+    clock = now or (lambda: datetime.now(timezone.utc))
+    if staging_enabled(env):
+        storage = StagedClanStorage()
+        if not wait:
+            target = timestamp(storage.current()['nextWarUpdateAt'])
+            return check_target(target, clock, wait=False, sleep=sleep)
+        # This step runs under the writer lock. Never start a capture from the hint alone.
+        _, _, state = storage.restore(load_tracker(), env['DASHBOARD_PASSWORD'])
+        return check_target(next_update(state, clock()), clock, wait=True, sleep=sleep)
     password = env.get('DASHBOARD_PASSWORD')
     if not password:
         raise ValueError('The existing dashboard password secret is required.')
@@ -21,6 +31,7 @@ def check(env=None, *, wait=False, now=None, sleep=time.sleep):
     state = tracker.decrypt_history(json.loads(path.read_text(encoding='utf-8')), password)
     if state.get('clanTag') != tracker.DEFAULT_CLAN_TAG:
         raise ValueError('The saved archive belongs to a different clan.')
+    client = None
     if shared_actions.ENABLED:
         try:
             client = shared_actions.Client(password)
@@ -29,18 +40,22 @@ def check(env=None, *, wait=False, now=None, sleep=time.sleep):
                 return True
         except shared_actions.SharedActionsError:
             print('::warning::Shared update queue was unavailable; recorded war timing will still be checked.')
-    clock = now or (lambda: datetime.now(timezone.utc))
     target = next_update(state, clock())
     if target is None or target > clock() + timedelta(minutes=5):
         # A setup-only capture job has the existing Clash key. The watcher
         # uses its signed identity to check whether that job is needed.
-        if shared_actions.ENABLED and env.get('ACTIONS_ID_TOKEN_REQUEST_URL'):
+        if client is not None and env.get('ACTIONS_ID_TOKEN_REQUEST_URL'):
             try:
                 if client.request('/members/api/war-score-credential', {'read': True}).get('needsSetup') is True:
                     print('The portal needs its one-time live war score setup.')
                     return True
             except shared_actions.SharedActionsError:
                 print('::warning::Live score setup status could not be checked.')
+    return check_target(target, clock, wait=wait, sleep=sleep)
+
+
+def check_target(target, clock, *, wait, sleep):
+    if target is None or target > clock() + timedelta(minutes=5):
         print('No recorded war needs its final-results update yet.')
         return False
     if wait:
@@ -63,7 +78,7 @@ def main():
         if output:
             with open(output, 'a', encoding='utf-8') as stream:
                 stream.write('due=' + str(should_run).lower() + '\n')
-    except (ValueError, OSError, TypeError):
+    except (ValueError, OSError, TypeError, KeyError, shared_actions.SharedActionsError):
         print('Could not verify the encrypted war schedule. Existing history was not changed.')
         raise SystemExit(1)
 

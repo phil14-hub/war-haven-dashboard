@@ -2,6 +2,11 @@ name: Update clan dashboard
 
 on:
   workflow_dispatch:
+    inputs:
+      stage_r2:
+        description: Run the clan collection against the isolated R2 staging release
+        type: boolean
+        default: false
   repository_dispatch:
     types: [war-haven-refresh-clan]
   schedule:
@@ -52,9 +57,11 @@ jobs:
           python scripts/sync_embedded_assets.py --check
           python -m unittest discover -s tests -p test_collection_integrity.py -v
       - name: Record workflow start
+        if: inputs.stage_r2 != true
         run: python github_health.py --kind clan --status running
       - name: Refresh and publish encrypted clan data
         env:
+          WAR_HAVEN_CLAN_STORAGE_STAGE: ${{ inputs.stage_r2 }}
           DASHBOARD_REQUEST_ID: ${{ github.event.client_payload.requestId }}
           COC_API_TOKEN: ${{ secrets.COC_API_TOKEN }}
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
@@ -62,7 +69,7 @@ jobs:
           CLAN_API_ROUTE: ${{ vars.CLAN_API_ROUTE }}
         run: python github_collector.py
       - name: Record workflow outcome
-        if: always()
+        if: always() && inputs.stage_r2 != true
         env:
           COLLECTOR_JOB_STATUS: ${{ job.status }}
         run: python github_health.py --kind clan --status "$COLLECTOR_JOB_STATUS"

@@ -2,6 +2,7 @@
 import base64
 from datetime import datetime, timezone
 import hashlib
+import hmac
 import json
 import re
 from urllib.request import Request, urlopen
@@ -253,15 +254,33 @@ def fetch_clan_badge(state, tracker):
         return None
 
 
-def publish(state, dashboard, client, password, tracker, view=None):
-    """Publish a small member projection and authenticated leadership bridge to R2."""
-    view = view if view is not None else build_snapshot(state, tracker)
+def leadership_payload(dashboard, password):
     html = dashboard.read_text()
     match = re.search(r'id="protected-payload">(.*?)</script>', html, re.S)
     if not match:
         raise ValueError('Protected dashboard payload not found.')
     envelope = json.loads(match.group(1))
     key = hashlib.pbkdf2_hmac('sha256', password.encode(), base64.b64decode(envelope['salt'], validate=True), envelope['rounds'], dklen=64)
+    return envelope, key
+
+
+def verify_staged_projection(state, dashboard, password, tracker, view=None):
+    view = view if view is not None else build_snapshot(state, tracker)
+    if view['clan']['tag'] != tracker.DEFAULT_CLAN_TAG:
+        raise ValueError('The staged member projection belongs to a different clan.')
+    envelope, key = leadership_payload(dashboard, password)
+    salt, iv, data, tag = (base64.b64decode(envelope[field], validate=True) for field in ('salt', 'iv', 'ciphertext', 'tag'))
+    authentication = hmac.new(key[32:], b'WarHavenDashboard:v1', hashlib.sha256)
+    for part in (salt, iv, data):
+        authentication.update(part)
+    if not hmac.compare_digest(authentication.digest(), tag):
+        raise ValueError('The staged dashboard page did not authenticate.')
+
+
+def publish(state, dashboard, client, password, tracker, view=None):
+    """Publish a small member projection and authenticated leadership bridge to R2."""
+    view = view if view is not None else build_snapshot(state, tracker)
+    envelope, key = leadership_payload(dashboard, password)
     publication={'view': view, 'leadership': {'payload': envelope, 'key': base64.b64encode(key).decode()}}
     badge=fetch_clan_badge(state,tracker)
     if badge:

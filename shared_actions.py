@@ -3,6 +3,7 @@ import base64
 from datetime import datetime, timezone
 import hashlib
 import hmac
+from http.client import HTTPException
 import json
 import os
 import time
@@ -13,15 +14,20 @@ from urllib.request import Request, urlopen
 
 BACKEND_URL = 'https://portal.warhavenclan.com'
 CLAN_ARCHIVE_BACKUP_PATH = '/members/api/clan-archive-backup'
+CLAN_STORAGE_STAGING_PATH = '/members/api/clan-storage-staging'
+CLAN_STORAGE_STAGING_BACKUP_PATH = '/members/api/clan-storage-staging-backup'
+ARCHIVE_PATHS = (CLAN_ARCHIVE_BACKUP_PATH, CLAN_STORAGE_STAGING_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH)
 # The service requires current dashboard-passphrase proof on every data/action request.
 ENABLED = True
 CONTEXT = b'WarHavenSharedEdit:v1'
-MACHINE_PATHS = ('/members/api/refresh-dispatch', '/members/api/publication-source', '/members/api/ingest', '/members/api/maintenance', '/members/api/collector-health', '/members/api/war-score-credential', CLAN_ARCHIVE_BACKUP_PATH, '/v1/refresh/request', '/v1/refresh/claim',
+MACHINE_PATHS = ('/members/api/refresh-dispatch', '/members/api/publication-source', '/members/api/ingest', '/members/api/maintenance', '/members/api/collector-health', '/members/api/war-score-credential', *ARCHIVE_PATHS, '/v1/refresh/request', '/v1/refresh/claim',
                  '/v1/refresh/progress', '/v1/refresh/finish', '/v1/refresh/reconcile')
 
 
 class SharedActionsError(Exception):
-    pass
+    def __init__(self, message, *, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 class Client:
@@ -65,17 +71,22 @@ class Client:
             request = Request(BACKEND_URL + path, data=data, headers=headers, method=method)
             # A complete encrypted recovery snapshot can outlast ordinary reads.
             # Keep collector authorization and the shorter timeout elsewhere.
-            timeout = 120 if route in ('/members/api/maintenance', CLAN_ARCHIVE_BACKUP_PATH) else 15
+            timeout = 120 if route in ('/members/api/maintenance', *ARCHIVE_PATHS) else 15
             with urlopen(request, timeout=timeout) as response:
                 if method == 'HEAD':
                     return True
-                if method == 'GET' and route == CLAN_ARCHIVE_BACKUP_PATH:
+                stage_object = route == CLAN_STORAGE_STAGING_PATH and path.partition('?')[2].startswith('kind=')
+                if method == 'GET' and (route in (CLAN_ARCHIVE_BACKUP_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH) or stage_object):
                     limit = 70 * 1024 * 1024
                     contents = response.read(limit + 1)
                     if len(contents) > limit:
                         raise SharedActionsError('Encrypted clan archive response exceeds the supported size.')
-                    return {'body': contents, 'sha256': response.headers.get('X-Archive-SHA256'),
-                            'source': response.headers.get('X-Archive-Source')}
+                    checksum_header = 'X-Object-SHA256' if stage_object else 'X-Archive-SHA256'
+                    result = {'body': contents, 'sha256': response.headers.get(checksum_header),
+                              'source': response.headers.get('X-Archive-Source')}
+                    if route == CLAN_STORAGE_STAGING_BACKUP_PATH:
+                        result['revision'] = response.headers.get('X-Archive-Revision')
+                    return result
                 return json.load(response)
         except HTTPError as error:
             status = error.code
@@ -84,9 +95,10 @@ class Client:
                 return False
             if status == 401 and retry:
                 self.proof = None
+                self.machine_token = None
                 return self.request(path, payload, retry=False, body=body, extra_headers=extra_headers, method=method)
-            raise SharedActionsError('Shared service request failed (HTTP ' + str(status) + ').') from None
-        except (ValueError, OSError, KeyError, TypeError):
+            raise SharedActionsError('Shared service request failed (HTTP ' + str(status) + ').', status=status) from None
+        except (ValueError, OSError, KeyError, TypeError, HTTPException):
             raise SharedActionsError('Shared service is temporarily unavailable.') from None
 
 
