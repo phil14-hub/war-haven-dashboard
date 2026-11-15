@@ -16,7 +16,8 @@ BACKEND_URL = 'https://portal.warhavenclan.com'
 CLAN_ARCHIVE_BACKUP_PATH = '/members/api/clan-archive-backup'
 CLAN_STORAGE_STAGING_PATH = '/members/api/clan-storage-staging'
 CLAN_STORAGE_STAGING_BACKUP_PATH = '/members/api/clan-storage-staging-backup'
-ARCHIVE_PATHS = (CLAN_ARCHIVE_BACKUP_PATH, CLAN_STORAGE_STAGING_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH)
+STAGING_PATHS = (CLAN_STORAGE_STAGING_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH)
+ARCHIVE_PATHS = (CLAN_ARCHIVE_BACKUP_PATH, *STAGING_PATHS)
 # The service requires current dashboard-passphrase proof on every data/action request.
 ENABLED = True
 CONTEXT = b'WarHavenSharedEdit:v1'
@@ -36,6 +37,7 @@ class Client:
         self.proof = None
         self.machine_token = None
         self.machine_until = 0
+        self.machine_audience = None
 
     def request(self, path, payload=None, retry=True, *, body=None, extra_headers=None, method='POST'):
         try:
@@ -54,15 +56,17 @@ class Client:
             if self.proof:
                 headers['X-War-Haven-Proof'] = self.proof
             if route in MACHINE_PATHS:
-                if not self.machine_token or time.time() > self.machine_until:
+                audience = 'war-haven-storage-staging' if route in STAGING_PATHS else 'war-haven-collector'
+                if not self.machine_token or self.machine_audience != audience or time.time() > self.machine_until:
                     endpoint = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_URL', '')
                     bearer = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_TOKEN', '')
                     if not endpoint.startswith('https://') or not bearer:
                         raise SharedActionsError('Collector publishing requires the configured main-branch GitHub Actions workflow. Local publications synchronize through sync-portal.yml.')
                     separator = '&' if '?' in endpoint else '?'
-                    oidc = Request(endpoint + separator + urlencode({'audience': 'war-haven-collector'}), headers={'Authorization': 'Bearer ' + bearer})
+                    oidc = Request(endpoint + separator + urlencode({'audience': audience}), headers={'Authorization': 'Bearer ' + bearer})
                     with urlopen(oidc, timeout=15) as response:
                         self.machine_token = json.load(response)['value']
+                    self.machine_audience = audience
                     self.machine_until = time.time() + 240
                 headers['Authorization'] = 'Bearer ' + self.machine_token
             data = body

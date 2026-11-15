@@ -1,0 +1,45 @@
+name: Verify hosted R2 storage staging
+
+on:
+  push:
+    branches: [storage-migration/r2-sync-staging]
+    paths: [.github/workflows/r2-staging-check.yml, clan_storage.py, github_sync_portal.py, shared_actions.py]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: war-haven-r2-storage-staging
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    if: github.ref == 'refs/heads/storage-migration/r2-sync-staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      WAR_HAVEN_CLAN_STORAGE_STAGE: 'true'
+      DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the archive encryption dependency
+        run: python -m pip install --disable-pip-version-check cryptography==50.0.2
+      - name: Seed and read back one verified production Git revision in isolated R2
+        run: python github_sync_portal.py --seed-r2-staging
+      - name: Reuse the immutable release and verify both dashboard inputs
+        run: python github_sync_portal.py
+      - name: Restore the separate daily copy and verify that a retry reuses it
+        run: |
+          python github_sync_portal.py --verify-clan-archive-backup
+          python github_sync_portal.py --verify-clan-archive-backup
