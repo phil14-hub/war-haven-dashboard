@@ -13,6 +13,7 @@ import clan_storage
 import github_collector
 import github_recruitment_collector
 import github_render_dashboard
+import github_stage_pages
 import github_sync_portal
 import github_war_check
 import member_exports
@@ -31,6 +32,7 @@ ENV = {'GITHUB_REPOSITORY': 'phil14-hub/war-haven-dashboard', 'DASHBOARD_PASSWOR
 class MemoryStorage:
     def __init__(self):
         self.index = None
+        self.releases = {}
         self.objects = {}
         self.backup = None
         self.events = []
@@ -51,6 +53,8 @@ class MemoryStorage:
             raise AssertionError('Staging must not send requests to live dashboard routes.')
         if raw:
             pairs = parse_qs(raw)
+            if 'revision' in pairs:
+                return {'index': self.releases[pairs['revision'][0]]}
             key = (pairs['kind'][0], pairs['sha256'][0])
             if method == 'HEAD':
                 return key in self.objects
@@ -69,6 +73,7 @@ class MemoryStorage:
                      archive=payload['archive'], page=payload['page'])
         value['revision'] = hashlib.sha256(json.dumps(value, separators=(',', ':')).encode()).hexdigest()
         self.index = value
+        self.releases[value['revision']] = value
         if self.timeout_after_commit:
             self.timeout_after_commit = False
             raise shared_actions.SharedActionsError('Lost response')
@@ -211,3 +216,20 @@ class StagingTests(unittest.TestCase):
             self.transport.objects['archive', saved['archive']['sha256']] += b' '
             with self.assertRaisesRegex(ValueError, 'failed verification'):
                 github_collector.run(ENV, tracker)
+
+    def test_pages_build_reuses_a_pinned_release_after_the_current_release_changes(self):
+        original = self.seed()['stagedRevision']
+        next_page = self.page + b'\n'
+        next_release = self.storage.store(self.storage.current(), SOURCE, None, self.archive, next_page)
+        with tempfile.TemporaryDirectory() as folder:
+            exact = Path(folder) / 'exact'
+            self.assertEqual(github_stage_pages.stage_pages(exact, original, self.storage), original)
+            self.assertEqual((exact / 'index.html').read_bytes(), self.page)
+            self.assertEqual({path.name for path in exact.iterdir()}, {'index.html', '.nojekyll'})
+            latest = Path(folder) / 'latest'
+            self.assertEqual(github_stage_pages.stage_pages(latest, storage=self.storage), next_release['revision'])
+            self.assertEqual((latest / 'index.html').read_bytes(), next_page)
+            self.transport.objects['page', next_release['page']['sha256']] = b'invalid'
+            with self.assertRaisesRegex(ValueError, 'failed verification'):
+                github_stage_pages.stage_pages(Path(folder) / 'invalid', storage=self.storage)
+            self.assertFalse((Path(folder) / 'invalid').exists())

@@ -3,7 +3,7 @@ name: Verify hosted R2 storage staging
 on:
   push:
     branches: [storage-migration/r2-sync-staging]
-    paths: [.github/workflows/r2-staging-check.yml, clan_storage.py, github_sync_portal.py, shared_actions.py]
+    paths: [.github/workflows/r2-staging-check.yml, clan_storage.py, github_sync_portal.py, shared_actions.py, github_stage_pages.py, tests/pages-lock-browser.mjs]
   workflow_dispatch:
 
 permissions:
@@ -43,3 +43,18 @@ jobs:
         run: |
           python github_sync_portal.py --verify-clan-archive-backup
           python github_sync_portal.py --verify-clan-archive-backup
+      - name: Prepare the encrypted Pages artifact from R2
+        run: python github_stage_pages.py "$RUNNER_TEMP/war-haven-pages"
+      - name: Install the Pages browser test tools
+        run: |
+          npm ci --ignore-scripts
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify Pages unlock on desktop and mobile
+        run: node tests/pages-lock-browser.mjs "$RUNNER_TEMP/war-haven-pages/index.html"
+      - name: Upload the staging Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          name: war-haven-pages-staging
+          path: ${{ runner.temp }}/war-haven-pages
+          retention-days: 1
