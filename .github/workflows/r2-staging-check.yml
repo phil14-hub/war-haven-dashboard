@@ -17,11 +17,10 @@ concurrency:
 jobs:
   restore:
     if: github.ref == 'refs/heads/storage-migration/r2-sync-staging'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     env:
       WAR_HAVEN_CLAN_STORAGE_STAGE: 'true'
-      DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -36,10 +35,16 @@ jobs:
       - name: Install the archive encryption dependency
         run: python -m pip install --disable-pip-version-check cryptography==50.0.2
       - name: Seed and read back one verified production Git revision in isolated R2
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
         run: python github_sync_portal.py --seed-r2-staging
       - name: Reuse the immutable release and verify both dashboard inputs
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
         run: python github_sync_portal.py
       - name: Restore the separate daily copy and verify that a retry reuses it
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
         run: |
           python github_sync_portal.py --verify-clan-archive-backup
           python github_sync_portal.py --verify-clan-archive-backup
@@ -51,6 +56,8 @@ jobs:
           npm install --no-save --ignore-scripts playwright@1.56.1
           npx playwright install --with-deps chromium
       - name: Verify Pages unlock on desktop and mobile
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
         run: node tests/pages-lock-browser.mjs "$RUNNER_TEMP/war-haven-pages/index.html"
       - name: Upload the staging Pages artifact
         uses: actions/upload-pages-artifact@v4
