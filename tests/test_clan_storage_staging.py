@@ -33,6 +33,7 @@ class MemoryStorage:
     def __init__(self):
         self.index = None
         self.releases = {}
+        self.passwords = {}
         self.objects = {}
         self.backup = None
         self.events = []
@@ -55,6 +56,9 @@ class MemoryStorage:
             pairs = parse_qs(raw)
             if 'revision' in pairs:
                 return {'index': self.releases[pairs['revision'][0]]}
+            if 'credential' in pairs:
+                selected = pairs['credential'][0]
+                return {'revision': selected, 'password': self.passwords[selected]}
             key = (pairs['kind'][0], pairs['sha256'][0])
             if method == 'HEAD':
                 return key in self.objects
@@ -233,3 +237,23 @@ class StagingTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'failed verification'):
                 github_stage_pages.stage_pages(Path(folder) / 'invalid', storage=self.storage)
             self.assertFalse((Path(folder) / 'invalid').exists())
+
+    def test_rotated_release_keeps_collector_and_historical_backup_credentials_separate(self):
+        original = self.seed()['stagedRevision']
+        github_sync_portal.run(ENV, tracker, verify_backup=True)
+        new_password = 'replacement synthetic passphrase'
+        rotated = json.dumps(tracker.encrypt_history(self.original, new_password, rounds=100000)).encode()
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'index.html'
+            tracker.write_dashboard(copy.deepcopy(self.original), path, password=new_password)
+            index = self.storage.store(self.storage.current(), SOURCE, None, rotated, path.read_bytes())
+        index.pop('revision')
+        index['collectorCredential'] = {'rotationOf': original, 'sealed': 'A' * 60}
+        index['revision'] = hashlib.sha256(json.dumps(index, separators=(',', ':')).encode()).hexdigest()
+        self.transport.index = index
+        self.transport.releases[index['revision']] = index
+        self.transport.passwords[index['revision']] = new_password
+        self.assertEqual(self.storage.restore(tracker, PASSWORD)[2], self.original)
+        self.assertEqual(github_sync_portal.run(ENV, tracker)['stagedRevision'], index['revision'])
+        self.assertEqual(github_sync_portal.read_clan_archive_backup(ENV | {'password': PASSWORD}, tracker,
+                          self.storage.client, staged=True), self.archive)

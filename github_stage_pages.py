@@ -2,21 +2,12 @@
 import argparse
 from pathlib import Path
 
-from clan_storage import StagedClanStorage, sha, validated_index
-from shared_actions import CLAN_STORAGE_STAGING_PATH
+from clan_storage import StagedClanStorage
 
 
 def stage_pages(output, revision=None, storage=None):
     storage = StagedClanStorage() if storage is None else storage
-    if revision is None:
-        index = storage.current()
-    else:
-        if not sha(revision, 64):
-            raise ValueError('Expected a 64-character R2 release revision.')
-        response = storage.client.request(CLAN_STORAGE_STAGING_PATH + '?revision=' + revision, method='GET')
-        index = validated_index(response['index'])
-        if index['revision'] != revision:
-            raise ValueError('R2 returned a different release revision.')
+    index = storage.current() if revision is None else storage.release(revision)
     page = storage.read('page', index)
     if not page.lower().startswith(b'<!doctype html>') or b'id="protected-payload"' not in page:
         raise ValueError('The staged page is missing its encrypted dashboard payload.')

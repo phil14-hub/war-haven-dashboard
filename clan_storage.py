@@ -60,6 +60,12 @@ def validated_index(value):
         if not isinstance(entry, dict) or not sha(entry.get('sha256'), 64) or type(entry.get('size')) is not int or not 0 < entry['size'] <= MAX_OBJECT_BYTES:
             raise ValueError('The staged release object reference is invalid.')
         canonical[kind] = {'sha256': entry['sha256'], 'size': entry['size']}
+    if 'collectorCredential' in value:
+        credential = value['collectorCredential']
+        if (not isinstance(credential, dict) or not sha(credential.get('rotationOf'), 64) or
+                not isinstance(credential.get('sealed'), str) or not re.fullmatch(r'[A-Za-z0-9+/=]{40,1500}', credential['sealed'])):
+            raise ValueError('The staged collector credential reference is invalid.')
+        canonical['collectorCredential'] = {'rotationOf': credential['rotationOf'], 'sealed': credential['sealed']}
     revision = hashlib.sha256(json.dumps(canonical, separators=(',', ':')).encode()).hexdigest()
     if revision != value.get('revision'):
         raise ValueError('The staged release index checksum does not match.')
@@ -77,6 +83,23 @@ class StagedClanStorage:
             if allow_empty and error.status == 404:
                 return None
             raise
+
+    def release(self, revision):
+        if not sha(revision, 64):
+            raise ValueError('Expected a 64-character R2 release revision.')
+        response = self.client.request(CLAN_STORAGE_STAGING_PATH + '?revision=' + revision, method='GET')
+        index = validated_index(response['index'])
+        if index['revision'] != revision:
+            raise ValueError('R2 returned a different release revision.')
+        return index
+
+    def release_password(self, index, fallback):
+        if 'collectorCredential' not in index:
+            return fallback
+        reply = self.client.request(CLAN_STORAGE_STAGING_PATH + '?credential=' + index['revision'], method='GET')
+        if reply.get('revision') != index['revision'] or not isinstance(reply.get('password'), str) or not reply['password']:
+            raise ValueError('The collector credential does not match the staged release.')
+        return reply['password']
 
     @staticmethod
     def object_path(kind, entry):
@@ -126,17 +149,19 @@ class StagedClanStorage:
     def restore(self, tracker, password):
         index = self.current()
         archive = self.read('archive', index)
-        return index, archive, verified_state(archive, tracker, password)
+        return index, archive, verified_state(archive, tracker, self.release_password(index, password))
 
 
 class StagedUpdate:
     """Use the production collector and renderer with an isolated storage and publication sink."""
     def __init__(self, storage, tracker, config):
         self.storage = storage
-        self.index, self.archive, self.state = storage.restore(tracker, config['password'])
+        self.index = storage.current()
+        self.password = storage.release_password(self.index, config['password'])
+        self.archive = storage.read('archive', self.index)
+        self.state = verified_state(self.archive, tracker, self.password)
         self.fingerprint = tracker.archive_fingerprint(self.state)
         self.tracker = tracker
-        self.password = config['password']
         self.client = storage.client
 
     def progress(self, phase, percent):

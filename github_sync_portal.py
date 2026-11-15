@@ -29,7 +29,14 @@ def read_clan_archive_backup(config, tracker, client, day=None, *, staged=False)
         raise ValueError('The private backup did not match its saved checksum and revision.')
     if staged and not re.fullmatch('[a-f0-9]{64}', saved.get('revision') or ''):
         raise ValueError('The staging backup is missing its archive revision.')
-    state = tracker.decrypt_history(json.loads(body), config['password'])
+    password = config['password']
+    if staged:
+        storage = StagedClanStorage(client)
+        index = storage.release(saved['revision'])
+        if index['archive']['sha256'] != saved['sha256'] or index['source'] != saved['source']:
+            raise ValueError('The staging backup does not match the referenced release.')
+        password = storage.release_password(index, password)
+    state = tracker.decrypt_history(json.loads(body), password)
     if tracker.normalize_tag(state.get('clanTag')) != tracker.DEFAULT_CLAN_TAG:
         raise ValueError('The private backup belongs to a different clan.')
     print('Private clan archive restored and verified in memory (' + str(len(body)) + ' bytes).')
@@ -86,7 +93,8 @@ def stage_release(config, tracker, storage, *, seed=False, backup=False, verify_
                 raise ValueError('The staged daily backup differs from the saved release.')
         return
 
-    current = storage.current(allow_empty=True) if seed else None
+    password = config['password']
+    current = storage.current(allow_empty=seed)
     if seed and current is None:
         root = '/repos/' + config['repository']
         source = tracker.github_request(config, 'GET', root + '/git/ref/heads/main')['object']['sha']
@@ -98,16 +106,17 @@ def stage_release(config, tracker, storage, *, seed=False, backup=False, verify_
         page_meta = tracker.github_request(config, 'GET', root + '/contents/index.html?ref=' + source)
         archive = git_blob(tracker, config, archive_meta['sha'])
         page = git_blob(tracker, config, page_meta['sha'])
-        state = verified_state(archive, tracker, config['password'])
+        state = verified_state(archive, tracker, password)
     else:
-        current, _, state = storage.restore(tracker, config['password'])
+        password = storage.release_password(current, password)
+        state = verified_state(storage.read('archive', current), tracker, password)
         page = storage.read('page', current)
     view = member_exports.build_snapshot(state, tracker)
     snapshot_audit.verify(state, tracker, view=view)
     with tempfile.TemporaryDirectory(prefix='war-haven-staged-portal-') as folder:
         dashboard = Path(folder) / 'index.html'
         dashboard.write_bytes(page)
-        member_exports.verify_staged_projection(state, dashboard, config['password'], tracker, view)
+        member_exports.verify_staged_projection(state, dashboard, password, tracker, view)
     if seed and current is None:
         current = storage.store(None, source, next_update(state), archive, page)
         if storage.read('archive', current) != archive or storage.read('page', current) != page:
