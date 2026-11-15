@@ -6,7 +6,7 @@ import json
 import re
 from urllib.parse import urlencode
 
-from shared_actions import CLAN_STORAGE_STAGING_PATH, Client, SharedActionsError
+from shared_actions import CLAN_STORAGE_PATH, CLAN_STORAGE_STAGING_PATH, Client, SharedActionsError
 from war_end_updates import iso, next_update
 
 
@@ -73,12 +73,13 @@ def validated_index(value):
 
 
 class StagedClanStorage:
-    def __init__(self, client=None):
+    def __init__(self, client=None, *, production=False):
         self.client = client if client is not None else Client('')
+        self.path = CLAN_STORAGE_PATH if production else CLAN_STORAGE_STAGING_PATH
 
     def current(self, *, allow_empty=False):
         try:
-            return validated_index(self.client.request(CLAN_STORAGE_STAGING_PATH, method='GET')['index'])
+            return validated_index(self.client.request(self.path, method='GET')['index'])
         except SharedActionsError as error:
             if allow_empty and error.status == 404:
                 return None
@@ -87,7 +88,7 @@ class StagedClanStorage:
     def release(self, revision):
         if not sha(revision, 64):
             raise ValueError('Expected a 64-character R2 release revision.')
-        response = self.client.request(CLAN_STORAGE_STAGING_PATH + '?revision=' + revision, method='GET')
+        response = self.client.request(self.path + '?revision=' + revision, method='GET')
         index = validated_index(response['index'])
         if index['revision'] != revision:
             raise ValueError('R2 returned a different release revision.')
@@ -96,14 +97,13 @@ class StagedClanStorage:
     def release_password(self, index, fallback):
         if 'collectorCredential' not in index:
             return fallback
-        reply = self.client.request(CLAN_STORAGE_STAGING_PATH + '?credential=' + index['revision'], method='GET')
+        reply = self.client.request(self.path + '?credential=' + index['revision'], method='GET')
         if reply.get('revision') != index['revision'] or not isinstance(reply.get('password'), str) or not reply['password']:
             raise ValueError('The collector credential does not match the staged release.')
         return reply['password']
 
-    @staticmethod
-    def object_path(kind, entry):
-        return CLAN_STORAGE_STAGING_PATH + '?' + urlencode({'kind': kind, 'sha256': entry['sha256']})
+    def object_path(self, kind, entry):
+        return self.path + '?' + urlencode({'kind': kind, 'sha256': entry['sha256']})
 
     def read(self, kind, index):
         entry = index[kind]
@@ -135,7 +135,7 @@ class StagedClanStorage:
         for kind, body in (('archive', archive), ('page', page)):
             self.ensure_object(kind, body, entries[kind])
         try:
-            saved = validated_index(self.client.request(CLAN_STORAGE_STAGING_PATH, payload)['index'])
+            saved = validated_index(self.client.request(self.path, payload)['index'])
         except SharedActionsError as error:
             if error.status not in (None, 409, 503):
                 raise

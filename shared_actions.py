@@ -14,10 +14,13 @@ from urllib.request import Request, urlopen
 
 BACKEND_URL = 'https://portal.warhavenclan.com'
 CLAN_ARCHIVE_BACKUP_PATH = '/members/api/clan-archive-backup'
+CLAN_STORAGE_PATH = '/members/api/clan-storage'
+CLAN_STORAGE_PAGES_PATH = '/members/api/clan-storage-pages'
 CLAN_STORAGE_STAGING_PATH = '/members/api/clan-storage-staging'
 CLAN_STORAGE_STAGING_BACKUP_PATH = '/members/api/clan-storage-staging-backup'
 STAGING_PATHS = (CLAN_STORAGE_STAGING_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH)
-ARCHIVE_PATHS = (CLAN_ARCHIVE_BACKUP_PATH, *STAGING_PATHS)
+ARCHIVE_PATHS = (CLAN_ARCHIVE_BACKUP_PATH, CLAN_STORAGE_PATH, CLAN_STORAGE_PAGES_PATH, *STAGING_PATHS)
+MACHINE_AUDIENCES = {CLAN_STORAGE_PAGES_PATH: 'war-haven-pages', **dict.fromkeys(STAGING_PATHS, 'war-haven-storage-staging')}
 # The service requires current dashboard-passphrase proof on every data/action request.
 ENABLED = True
 CONTEXT = b'WarHavenSharedEdit:v1'
@@ -56,7 +59,7 @@ class Client:
             if self.proof:
                 headers['X-War-Haven-Proof'] = self.proof
             if route in MACHINE_PATHS:
-                audience = 'war-haven-storage-staging' if route in STAGING_PATHS else 'war-haven-collector'
+                audience = MACHINE_AUDIENCES.get(route, 'war-haven-collector')
                 if not self.machine_token or self.machine_audience != audience or time.time() > self.machine_until:
                     endpoint = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_URL', '')
                     bearer = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_TOKEN', '')
@@ -79,16 +82,18 @@ class Client:
             with urlopen(request, timeout=timeout) as response:
                 if method == 'HEAD':
                     return True
-                stage_object = route == CLAN_STORAGE_STAGING_PATH and path.partition('?')[2].startswith('kind=')
-                if method == 'GET' and (route in (CLAN_ARCHIVE_BACKUP_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH) or stage_object):
+                release_object = (route == CLAN_STORAGE_PAGES_PATH or
+                                  route in (CLAN_STORAGE_PATH, CLAN_STORAGE_STAGING_PATH)
+                                  and path.partition('?')[2].startswith('kind='))
+                if method == 'GET' and (route in (CLAN_ARCHIVE_BACKUP_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH) or release_object):
                     limit = 70 * 1024 * 1024
                     contents = response.read(limit + 1)
                     if len(contents) > limit:
                         raise SharedActionsError('Encrypted clan archive response exceeds the supported size.')
-                    checksum_header = 'X-Object-SHA256' if stage_object else 'X-Archive-SHA256'
+                    checksum_header = 'X-Object-SHA256' if release_object else 'X-Archive-SHA256'
                     result = {'body': contents, 'sha256': response.headers.get(checksum_header),
                               'source': response.headers.get('X-Archive-Source')}
-                    if route == CLAN_STORAGE_STAGING_BACKUP_PATH:
+                    if route in (CLAN_STORAGE_PAGES_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH):
                         result['revision'] = response.headers.get('X-Archive-Revision')
                     return result
                 return json.load(response)

@@ -74,7 +74,24 @@ jobs:
           python github_sync_portal.py --verify-clan-archive-backup
           python github_sync_portal.py --verify-clan-archive-backup
       - name: Prepare the encrypted Pages artifact from R2
-        run: python github_stage_pages.py "$RUNNER_TEMP/war-haven-pages"
+        run: |
+          python - <<'PY'
+          import filecmp
+          import os
+          from pathlib import Path
+
+          from github_stage_pages import stage_pages
+
+          output = Path(os.environ['RUNNER_TEMP'])
+          first = output / 'war-haven-pages'
+          retry = output / 'war-haven-pages-retry'
+          revision = stage_pages(first)
+          stage_pages(retry, revision)
+          for name in ('index.html', '.nojekyll'):
+              if not filecmp.cmp(first / name, retry / name, shallow=False):
+                  raise ValueError('The Pages retry did not reuse the exact saved artifact.')
+          print('The exact R2 release produced an identical Pages retry.')
+          PY
       - name: Install the Pages browser test tools
         run: |
           npm ci --ignore-scripts

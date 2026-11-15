@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.parse import parse_qs
 
 import clan_storage
@@ -237,6 +237,27 @@ class StagingTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'failed verification'):
                 github_stage_pages.stage_pages(Path(folder) / 'invalid', storage=self.storage)
             self.assertFalse((Path(folder) / 'invalid').exists())
+
+    def test_production_pages_requires_the_exact_verified_release(self):
+        revision = 'a' * 64
+        client = Mock()
+        response = {'body': self.page, 'sha256': hashlib.sha256(self.page).hexdigest(), 'revision': revision}
+        client.request.return_value = response
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder) / 'verified'
+            self.assertEqual(github_stage_pages.stage_production_pages(out, revision, client), revision)
+            client.request.assert_called_once_with(shared_actions.CLAN_STORAGE_PAGES_PATH + '?revision=' + revision, method='GET')
+            self.assertEqual((out / 'index.html').read_bytes(), self.page)
+            self.assertEqual({path.name for path in out.iterdir()}, {'index.html', '.nojekyll'})
+            invalid = Path(folder) / 'invalid'
+            for mismatch in ({'sha256': 'b' * 64}, {'revision': 'b' * 64}):
+                client.request.return_value = {**response, **mismatch}
+                with self.assertRaisesRegex(ValueError, 'did not verify'):
+                    github_stage_pages.stage_production_pages(invalid, revision, client)
+                self.assertFalse(invalid.exists())
+            for unpinned in (None, 'main'):
+                with self.assertRaisesRegex(ValueError, 'exact R2 release'):
+                    github_stage_pages.stage_production_pages(invalid, unpinned, client)
 
     def test_rotated_release_keeps_collector_and_historical_backup_credentials_separate(self):
         original = self.seed()['stagedRevision']
