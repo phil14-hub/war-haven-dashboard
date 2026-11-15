@@ -34,7 +34,32 @@ jobs:
           node-version: '22'
       - name: Install the archive encryption dependency
         run: python -m pip install --disable-pip-version-check cryptography==50.0.2
-      - name: Seed and read back one verified production Git revision in isolated R2
+      - name: Verify the pinned Git checkpoint without replacing the R2 release
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          import github_collector
+          import member_exports
+          import snapshot_audit
+          from clan_storage import verified_state
+
+          tracker = github_collector.load_tracker()
+          password = os.environ['DASHBOARD_PASSWORD']
+          archive = Path('data/war_tracker_state.enc.json').read_bytes()
+          page = Path('index.html')
+          state = verified_state(archive, tracker, password)
+          view = member_exports.build_snapshot(state, tracker)
+          snapshot_audit.verify(state, tracker, view=view)
+          member_exports.verify_staged_projection(state, page, password, tracker, view)
+          print('Git checkpoint archive SHA-256:', hashlib.sha256(archive).hexdigest())
+          print('Git checkpoint page SHA-256:', hashlib.sha256(page.read_bytes()).hexdigest())
+          PY
+      - name: Verify the existing isolated R2 release or initialize it if empty
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
         run: python github_sync_portal.py --seed-r2-staging
