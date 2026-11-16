@@ -68,6 +68,8 @@ jobs:
     if: needs.check.outputs.due == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      r2_revision: ${{ steps.collect.outputs.r2_revision }}
     concurrency:
       group: war-haven-clan-update
       cancel-in-progress: false
@@ -99,6 +101,7 @@ jobs:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
         run: python github_war_check.py --wait
       - name: Capture and publish final war results
+        id: collect
         if: steps.timing.outputs.due == 'true'
         env:
           WAR_HAVEN_CLAN_STORAGE_STAGE: ${{ inputs.stage_r2 }}
@@ -115,3 +118,16 @@ jobs:
         env:
           COLLECTOR_JOB_STATUS: ${{ job.status }}
         run: python github_health.py --kind war-capture --status "$COLLECTOR_JOB_STATUS"
+
+  queue-pages:
+    needs: capture
+    if: github.ref == 'refs/heads/main' && vars.CLAN_STORAGE_R2_ENABLED == 'true' && needs.capture.outputs.r2_revision != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Queue Pages after an actual capture releases the writer lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-r2-pages.yml --repo "$GITHUB_REPOSITORY" --ref main

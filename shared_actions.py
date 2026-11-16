@@ -84,7 +84,7 @@ class Client:
             with urlopen(request, timeout=timeout) as response:
                 if method == 'HEAD':
                     return True
-                release_object = (route == CLAN_STORAGE_PAGES_PATH or
+                release_object = (route == CLAN_STORAGE_PAGES_PATH and path.partition('?')[2].startswith('revision=') or
                                   route in (CLAN_STORAGE_PATH, CLAN_STORAGE_STAGING_PATH)
                                   and path.partition('?')[2].startswith('kind='))
                 if method == 'GET' and (route in BACKUP_PATHS or release_object):

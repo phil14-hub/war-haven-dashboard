@@ -270,6 +270,22 @@ class StagingTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'exact R2 release'):
                     github_stage_pages.stage_production_pages(invalid, unpinned, client)
 
+    def test_automatic_pages_retries_until_confirmation_and_skips_delivered_bytes(self):
+        revision = 'd' * 64
+        client = Mock()
+        client.request.return_value = {'revision': revision, 'published': False}
+        self.assertEqual(github_stage_pages.production_revision(client=client), revision)
+        self.assertEqual(github_stage_pages.production_revision(client=client), revision)
+        client.request.assert_called_with(shared_actions.CLAN_STORAGE_PAGES_PATH, method='GET')
+        client.request.return_value = {'revision': revision, 'published': True}
+        self.assertIsNone(github_stage_pages.production_revision(client=client))
+        client.request.reset_mock()
+        self.assertEqual(github_stage_pages.production_revision(revision, client), revision)
+        client.request.assert_not_called()
+        client.request.return_value = {'confirmed': True}
+        github_stage_pages.confirm_production_pages(revision, client)
+        client.request.assert_called_once_with(shared_actions.CLAN_STORAGE_PAGES_PATH + '?revision=' + revision)
+
     def test_production_collectors_complete_independently_of_pages_and_retry_from_r2(self):
         env = {**ENV, 'WAR_HAVEN_CLAN_STORAGE_STAGE': 'false', 'WAR_HAVEN_CLAN_STORAGE_R2': 'true'}
         transport = MemoryStorage(production=True)

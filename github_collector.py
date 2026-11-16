@@ -170,7 +170,11 @@ if __name__ == '__main__':
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument('--post-war', action='store_true',
                             help='Collect due final war results and retain the existing recruiter scan.')
-        run(post_war=parser.parse_args().post_war)
+        result = run(post_war=parser.parse_args().post_war)
+        output = os.environ.get('GITHUB_OUTPUT')
+        if output and result.get('r2Revision'):
+            with open(output, 'a', encoding='utf-8') as stream:
+                stream.write('r2_revision=' + result['r2Revision'] + '\n')
     except ValueError as error:
         print('Setup needed:', str(error))
         raise SystemExit(1)

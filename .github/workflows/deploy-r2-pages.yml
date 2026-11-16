@@ -1,12 +1,20 @@
 name: Deploy encrypted backup page from R2
 
 on:
+  workflow_run:
+    workflows:
+      - Update clan dashboard
+      - Update recruitment
+      - Publish dashboard code from saved history
+      - Synchronize member and leadership portal
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       revision:
-        description: Exact current production R2 release revision
+        description: Exact current revision to redeliver, or leave blank to discover pending delivery
         type: string
-        required: true
+        required: false
 
 permissions: {}
 
@@ -16,12 +24,20 @@ concurrency:
 
 jobs:
   package:
-    if: github.repository == 'phil14-hub/war-haven-dashboard' && github.ref == 'refs/heads/main' && vars.CLAN_STORAGE_R2_ENABLED == 'true'
+    if: >-
+      github.repository == 'phil14-hub/war-haven-dashboard' &&
+      github.ref == 'refs/heads/main' &&
+      vars.CLAN_STORAGE_R2_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
       id-token: write
+    outputs:
+      revision: ${{ steps.current.outputs.revision }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,11 +45,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Package the current encrypted page and verify its revision
+      - name: Find the release that still needs delivery
+        id: current
         env:
-          RELEASE_REVISION: ${{ inputs.revision }}
+          REQUESTED_REVISION: ${{ inputs.revision }}
+        run: |
+          revision=$(python github_stage_pages.py --select-current --revision "$REQUESTED_REVISION")
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+      - name: Package the current encrypted page and verify its revision
+        if: steps.current.outputs.revision != ''
+        env:
+          RELEASE_REVISION: ${{ steps.current.outputs.revision }}
         run: python github_stage_pages.py "$RUNNER_TEMP/war-haven-pages" --production --revision "$RELEASE_REVISION"
       - uses: actions/upload-pages-artifact@v5
+        if: steps.current.outputs.revision != ''
         with:
           path: ${{ runner.temp }}/war-haven-pages
           retention-days: 1
@@ -41,6 +66,7 @@ jobs:
 
   deploy:
     needs: package
+    if: needs.package.outputs.revision != '' && vars.CLAN_STORAGE_R2_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -59,8 +85,12 @@ jobs:
           python-version: '3.12'
       - name: Confirm the artifact revision is still current before deploying
         env:
-          RELEASE_REVISION: ${{ inputs.revision }}
+          RELEASE_REVISION: ${{ needs.package.outputs.revision }}
         run: python github_stage_pages.py --check-current --revision "$RELEASE_REVISION"
       - name: Deploy the verified artifact to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Record successful delivery
+        env:
+          RELEASE_REVISION: ${{ needs.package.outputs.revision }}
+        run: python github_stage_pages.py --confirm --revision "$RELEASE_REVISION"
