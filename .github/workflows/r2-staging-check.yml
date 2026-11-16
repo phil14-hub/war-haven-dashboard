@@ -34,6 +34,8 @@ jobs:
           node-version: '22'
       - name: Install the archive encryption dependency
         run: python -m pip install --disable-pip-version-check cryptography==50.0.2
+      - name: Exercise the production workflow paths against isolated storage
+        run: python -m unittest discover -s tests -p 'test_clan_storage_staging.py'
       - name: Verify the pinned Git checkpoint without replacing the R2 release
         env:
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}

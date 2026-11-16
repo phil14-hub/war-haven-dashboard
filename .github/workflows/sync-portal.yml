@@ -1,7 +1,13 @@
 name: Synchronize member and leadership portal
+env:
+  WAR_HAVEN_CLAN_STORAGE_R2: ${{ github.ref == 'refs/heads/main' && vars.CLAN_STORAGE_R2_ENABLED == 'true' }}
 on:
   workflow_dispatch:
     inputs:
+      seed_r2_revision:
+        description: Full pinned main commit to seed into empty production R2 storage
+        required: false
+        type: string
       archive_day:
         description: UTC backup date to verify (YYYY-MM-DD)
         required: false
@@ -27,7 +33,7 @@ concurrency:
   queue: single
 jobs:
   maintenance:
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off')
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -49,7 +55,7 @@ jobs:
       group: war-haven-clan-update
       cancel-in-progress: false
       queue: max
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off')
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -79,7 +85,7 @@ jobs:
           COLLECTOR_JOB_STATUS: ${{ job.status }}
         run: python github_health.py --kind portal --status "$COLLECTOR_JOB_STATUS"
   backup-clan-archive:
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && (github.event_name != 'schedule' || github.event.schedule == '8 17 * * *') && (!inputs.staging || inputs.staging == 'off')
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && (github.event_name != 'schedule' || github.event.schedule == '8 17 * * *') && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 7
     concurrency:
@@ -110,8 +116,31 @@ jobs:
           else
             python github_sync_portal.py --verify-clan-archive-backup
           fi
+  seed-production:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.seed_r2_revision && (!inputs.staging || inputs.staging == 'off') && vars.CLAN_STORAGE_R2_ENABLED != 'true'
+    concurrency:
+      group: war-haven-clan-update
+      cancel-in-progress: false
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native archive encryption
+        run: python -m pip install --disable-pip-version-check cryptography==50.0.2
+      - name: Verify and seed the exact Git checkpoint without switching the collectors
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CHECKPOINT: ${{ inputs.seed_r2_revision }}
+        run: python github_sync_portal.py --seed-r2-production "$CHECKPOINT"
   staging:
-    if: github.event_name == 'workflow_dispatch' && (inputs.staging == 'seed' || inputs.staging == 'verify' || inputs.staging == 'daily-backup')
+    if: github.event_name == 'workflow_dispatch' && (inputs.staging == 'seed' || inputs.staging == 'verify' || inputs.staging == 'daily-backup') && !inputs.seed_r2_revision
     concurrency:
       group: war-haven-clan-update
       cancel-in-progress: false

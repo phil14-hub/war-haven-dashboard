@@ -18,6 +18,10 @@ def staging_enabled(env):
     return env.get('WAR_HAVEN_CLAN_STORAGE_STAGE') == 'true'
 
 
+def production_enabled(env):
+    return env.get('WAR_HAVEN_CLAN_STORAGE_R2') == 'true' and not staging_enabled(env)
+
+
 def sha(value, length):
     return isinstance(value, str) and len(value) == length and re.fullmatch('[a-f0-9]+', value) is not None
 
@@ -168,6 +172,11 @@ class StagedUpdate:
         print(f'Staged update: {phase} ({percent}%).')
 
     def save(self, state, dashboard, source=None, view=None):
+        index = self.commit_release(state, dashboard, source, view)
+        print('Verified staged clan release and both dashboard projections: ' + index['revision'])
+        return {'stagedRevision': index['revision']}
+
+    def commit_release(self, state, dashboard, source=None, view=None):
         from member_exports import verify_staged_projection
 
         verify_staged_projection(state, dashboard, self.password, self.tracker, view)
@@ -176,6 +185,4 @@ class StagedUpdate:
             envelope = self.tracker.encrypt_history(state, self.password)
             archive = json.dumps(envelope, separators=(',', ':')).encode()
         target = next_update(state, datetime.now(timezone.utc))
-        index = self.storage.store(self.index, source or self.index['source'], target, archive, dashboard.read_bytes())
-        print('Verified staged clan release and both dashboard projections: ' + index['revision'])
-        return {'stagedRevision': index['revision']}
+        return self.storage.store(self.index, source or self.index['source'], target, archive, dashboard.read_bytes())

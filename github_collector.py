@@ -1,6 +1,6 @@
 """Run the existing tracker in GitHub Actions without interactive Pyto setup."""
 import argparse
-from clan_storage import StagedClanStorage, StagedUpdate, staging_enabled
+from clan_storage import StagedClanStorage, StagedUpdate, production_enabled, staging_enabled
 import copy
 import importlib.util
 import os
@@ -11,7 +11,7 @@ from war_end_updates import next_update, record_update
 import shared_actions
 import member_exports
 import snapshot_audit
-from publication_sync import phase,record as record_publication
+from publication_sync import phase,record as record_publication,save_r2
 from datetime import datetime, timezone
 
 
@@ -74,11 +74,17 @@ def run(env=None, tracker=None, *, post_war=False):
             print('The verified staged archive has no due final-war update.')
             return {'skipped': True}
         return collect(env, tracker, config, route, staged.state, post_war=post_war, request=staged, staged=staged)
-    state = tracker.new_state(tracker.DEFAULT_CLAN_TAG)
+    release = None
     # Verify and restore the latest archive before asking Clash for new data.
     # Any decryption/download failure aborts without a publication.
     with phase("restore-and-verify"):
-        tracker.pull_github_history(state, config)
+        if production_enabled(env):
+            release = StagedUpdate(StagedClanStorage(production=True), tracker, config)
+            state = release.state
+            config['password'] = release.password
+        else:
+            state = tracker.new_state(tracker.DEFAULT_CLAN_TAG)
+            tracker.pull_github_history(state, config)
     client = shared_actions.Client(config['password'])
     configure_live_war_score(env, route, client)
     shared_request = None
@@ -98,13 +104,14 @@ def run(env=None, tracker=None, *, post_war=False):
     request = shared_actions.UpdateRequest(client, 'clan', shared_request)
     request.claim()
     try:
-        return collect(env, tracker, config, route, state, post_war=post_war and shared_request is None, request=request)
+        return collect(env, tracker, config, route, state, post_war=post_war and shared_request is None,
+                       request=request, release=release)
     except Exception:
         request.finish()
         raise
 
 
-def collect(env, tracker, config, route, state, *, post_war, request, staged=None):
+def collect(env, tracker, config, route, state, *, post_war, request, staged=None, release=None):
     candidate = copy.deepcopy(state)
     if shared_actions.ENABLED and staged is None:
         shared_actions.pull(candidate, request.client, tracker)
@@ -131,11 +138,15 @@ def collect(env, tracker, config, route, state, *, post_war, request, staged=Non
     with tempfile.TemporaryDirectory(prefix='war-haven-') as directory:
         dashboard = Path(directory) / 'index.html'
         with phase('render-and-encrypt'):
-            tracker.write_dashboard(candidate, dashboard, password=config['password'])
+            tracker.write_dashboard(candidate, dashboard, password=staged.password if staged else config['password'])
         request.progress('deploying', 90)
         if staged is not None:
             with phase('save-staged-release'):
                 return staged.save(candidate, dashboard, source=env.get('GITHUB_SHA'), view=view)
+        if release is not None:
+            result = save_r2(release, candidate, dashboard, request.client, config, tracker, env.get('GITHUB_SHA'), view)
+            request.finish(result)
+            return result
         with phase('atomic-backup-commit'):
             result = tracker.publish_dashboard(config, dashboard, state=candidate, wait_seconds=0)
         try:

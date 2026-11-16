@@ -7,7 +7,7 @@ from pathlib import Path
 import time
 
 from github_collector import load_tracker
-from clan_storage import StagedClanStorage, staging_enabled
+from clan_storage import StagedClanStorage, production_enabled, staging_enabled
 from war_end_updates import next_update, timestamp
 import shared_actions
 
@@ -26,11 +26,20 @@ def check(env=None, *, wait=False, now=None, sleep=time.sleep):
     password = env.get('DASHBOARD_PASSWORD')
     if not password:
         raise ValueError('The existing dashboard password secret is required.')
-    tracker = load_tracker()
-    path = Path(__file__).resolve().parent / 'data' / 'war_tracker_state.enc.json'
-    state = tracker.decrypt_history(json.loads(path.read_text(encoding='utf-8')), password)
-    if state.get('clanTag') != tracker.DEFAULT_CLAN_TAG:
-        raise ValueError('The saved archive belongs to a different clan.')
+    if production_enabled(env):
+        storage = StagedClanStorage(production=True)
+        if wait:
+            _, _, state = storage.restore(load_tracker(), password)
+            target = next_update(state, clock())
+        else:
+            target = timestamp(storage.current()['nextWarUpdateAt'])
+    else:
+        tracker = load_tracker()
+        path = Path(__file__).resolve().parent / 'data' / 'war_tracker_state.enc.json'
+        state = tracker.decrypt_history(json.loads(path.read_text(encoding='utf-8')), password)
+        if state.get('clanTag') != tracker.DEFAULT_CLAN_TAG:
+            raise ValueError('The saved archive belongs to a different clan.')
+        target = next_update(state, clock())
     client = None
     if shared_actions.ENABLED:
         try:
@@ -40,7 +49,6 @@ def check(env=None, *, wait=False, now=None, sleep=time.sleep):
                 return True
         except shared_actions.SharedActionsError:
             print('::warning::Shared update queue was unavailable; recorded war timing will still be checked.')
-    target = next_update(state, clock())
     if target is None or target > clock() + timedelta(minutes=5):
         # A setup-only capture job has the existing Clash key. The watcher
         # uses its signed identity to check whether that job is needed.

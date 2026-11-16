@@ -7,8 +7,8 @@ import github_recruiter
 import member_exports
 import shared_actions
 import snapshot_audit
-from clan_storage import StagedClanStorage, StagedUpdate, staging_enabled
-from publication_sync import phase,record as record_publication
+from clan_storage import StagedClanStorage, StagedUpdate, production_enabled, staging_enabled
+from publication_sync import phase,record as record_publication,save_r2
 
 
 def source_is_current(env, tracker, config):
@@ -37,8 +37,13 @@ def run(env=None, tracker=None):
         print('A newer source release superseded this verified build. Publication skipped.')
         return {'published':False, 'skipped':True}
     staged = StagedUpdate(StagedClanStorage(), tracker, config) if staging_enabled(env) else None
+    release = StagedUpdate(StagedClanStorage(production=True), tracker, config) if production_enabled(env) else None
     if staged is not None:
         state = staged.state
+        config['password'] = staged.password
+    elif release is not None:
+        state = release.state
+        config['password'] = release.password
     else:
         state=tracker.new_state(tracker.DEFAULT_CLAN_TAG)
         if not tracker.pull_github_history(state,config):
@@ -56,6 +61,8 @@ def run(env=None, tracker=None):
         tracker.write_dashboard(state,path,password=config['password'])
         if staged is not None:
             return staged.save(state, path, source=env.get('GITHUB_SHA'))
+        if release is not None:
+            return save_r2(release, state, path, client, config, tracker, env.get('GITHUB_SHA'))
         result=tracker.publish_dashboard(config,path,state=state,wait_seconds=0)
         try:
             publication=member_exports.publish(state,path,client,config['password'],tracker)

@@ -30,7 +30,11 @@ ENV = {'GITHUB_REPOSITORY': 'phil14-hub/war-haven-dashboard', 'DASHBOARD_PASSWOR
 
 
 class MemoryStorage:
-    def __init__(self):
+    def __init__(self, *, production=False):
+        self.path = shared_actions.CLAN_STORAGE_PATH if production else shared_actions.CLAN_STORAGE_STAGING_PATH
+        self.backup_path = shared_actions.CLAN_STORAGE_BACKUP_PATH if production else shared_actions.CLAN_STORAGE_STAGING_BACKUP_PATH
+        self.production = production
+        self.publication_source = None
         self.index = None
         self.releases = {}
         self.passwords = {}
@@ -42,7 +46,7 @@ class MemoryStorage:
     def request(self, path, payload=None, *, method='POST', body=None, extra_headers=None):
         endpoint, _, raw = path.partition('?')
         self.events.append((method, endpoint, raw, len(body or b'')))
-        if endpoint == shared_actions.CLAN_STORAGE_STAGING_BACKUP_PATH:
+        if endpoint == self.backup_path:
             if method == 'HEAD':
                 return self.backup is not None
             if method == 'GET':
@@ -50,7 +54,14 @@ class MemoryStorage:
             self.backup = dict(body=body, sha256=extra_headers['X-Archive-SHA256'],
                                source=extra_headers['X-Archive-Source'], revision=extra_headers['X-Archive-Revision'])
             return {k: v for k, v in self.backup.items() if k != 'body'} | dict(status='saved', reused=False, bytes=len(body), day='2030-01-01')
-        if endpoint != shared_actions.CLAN_STORAGE_STAGING_PATH:
+        if self.production and endpoint == '/members/api/publication-source':
+            if payload.get('read'):
+                return {'source': self.publication_source}
+            self.publication_source = {**payload['source'], 'publication': payload['publication']}
+            return {'source': self.publication_source}
+        if self.production and endpoint == '/v1/refresh/reconcile':
+            return {}
+        if endpoint != self.path:
             raise AssertionError('Staging must not send requests to live dashboard routes.')
         if raw:
             pairs = parse_qs(raw)
@@ -258,6 +269,91 @@ class StagingTests(unittest.TestCase):
             for unpinned in (None, 'main'):
                 with self.assertRaisesRegex(ValueError, 'exact R2 release'):
                     github_stage_pages.stage_production_pages(invalid, unpinned, client)
+
+    def test_production_collectors_complete_independently_of_pages_and_retry_from_r2(self):
+        env = {**ENV, 'WAR_HAVEN_CLAN_STORAGE_STAGE': 'false', 'WAR_HAVEN_CLAN_STORAGE_R2': 'true'}
+        transport = MemoryStorage(production=True)
+        storage = clan_storage.StagedClanStorage(transport, production=True)
+        storage.store(None, SOURCE, None, self.archive, self.page)
+        request = Mock()
+        request.client = transport
+
+        def clan_refresh(state, _api):
+            state['roster'][0]['donations'] += 7
+            state['lastSuccessfulSync'] = '2030-01-01T12:00:00Z'
+
+        def recruiter_refresh(state, *_args):
+            state['recruiterStatus']['lastAttemptAt'] = '2030-01-01T13:00:00Z'
+
+        def factories(module):
+            return patch.object(module, 'StagedClanStorage', return_value=storage)
+
+        with (factories(github_collector), factories(github_recruitment_collector),
+              factories(github_render_dashboard), factories(github_sync_portal),
+              patch.object(shared_actions, 'Client', return_value=transport),
+              patch.object(shared_actions, 'pending', return_value=None),
+              patch.object(shared_actions, 'UpdateRequest', return_value=request),
+              patch.object(shared_actions, 'pull'),
+              patch.object(tracker, 'refresh', side_effect=clan_refresh) as clash,
+              patch.object(github_recruitment_collector.github_recruiter, 'refresh', side_effect=recruiter_refresh) as recruit,
+              patch.object(member_exports, 'publish', side_effect=[shared_actions.SharedActionsError('Offline'),
+                           {'publication': 'recovered'}, {'publication': 'recruited'}, {'publication': 'rebuilt'}]) as publish):
+            result = github_collector.run(env, tracker)
+            self.assertEqual(result['components'], {'backup': True, 'github': False, 'portal': False})
+            self.assertTrue(result['partial'])
+            request.finish.assert_called_with(result)
+            self.assertEqual(storage.current()['revision'], result['r2Revision'])
+            self.assertEqual(storage.restore(tracker, PASSWORD)[2]['roster'][0]['donations'], 17)
+            self.assertEqual(github_sync_portal.run(env, tracker)['publication'], 'recovered')
+            self.assertTrue(github_sync_portal.run(env, tracker)['reused'])
+            self.assertEqual(publish.call_count, 2)
+            self.assertEqual(transport.publication_source['r2Revision'], result['r2Revision'])
+            recruited = github_recruitment_collector.run(env, tracker)
+            self.assertEqual(recruited['components'], {'backup': True, 'github': False, 'portal': True})
+            self.assertFalse(recruited['partial'])
+            before = storage.current()
+            self.assertTrue(github_render_dashboard.run(env, tracker)['components']['portal'])
+            self.assertEqual(storage.current()['archive'], before['archive'])
+            for _ in range(2):
+                github_sync_portal.run(env, tracker, verify_backup=True)
+            self.assertEqual(transport.backup['revision'], storage.current()['revision'])
+            self.assertEqual(sum(event[:2] == ('POST', transport.backup_path) for event in transport.events), 1)
+            self.assertEqual(storage.restore(tracker, PASSWORD)[2]['raids'], self.original['raids'])
+            clash.assert_called_once()
+            recruit.assert_called_once()
+
+    def test_production_seed_checks_the_pinned_git_head_and_never_replaces_r2(self):
+        env = {**ENV, 'WAR_HAVEN_CLAN_STORAGE_STAGE': 'false', 'GITHUB_REF': 'refs/heads/main',
+               'GITHUB_EVENT_NAME': 'workflow_dispatch'}
+        transport = MemoryStorage(production=True)
+        storage = clan_storage.StagedClanStorage(transport, production=True)
+        archive, page = git_record(self.archive), git_record(self.page)
+        endings = {f'/contents/index.html?ref={SOURCE}': page,
+                   f"/git/blobs/{archive['sha']}": archive, f"/git/blobs/{page['sha']}": page}
+        head = [SOURCE, 'b' * 40]
+
+        def git(_config, method, path):
+            self.assertEqual(method, 'GET')
+            if path.endswith('/git/ref/heads/main'):
+                return {'object': {'sha': head.pop(0) if len(head) > 1 else head[0]}}
+            return endings[path.removeprefix('/repos/' + ENV['GITHUB_REPOSITORY'])]
+
+        with (patch.object(github_sync_portal, 'StagedClanStorage', return_value=storage),
+              patch.object(tracker, 'github_request', side_effect=git),
+              patch.object(tracker, 'github_history_record', return_value=archive)):
+            with self.assertRaisesRegex(ValueError, 'Main advanced'):
+                github_sync_portal.run(env, tracker, seed_revision=SOURCE)
+            self.assertIsNone(storage.current(allow_empty=True))
+            self.assertFalse(transport.objects)
+            head[:] = [SOURCE]
+            seeded = github_sync_portal.run(env, tracker, seed_revision=SOURCE)
+            self.assertEqual(github_sync_portal.run(env, tracker, seed_revision=SOURCE), seeded)
+            advanced = storage.store(seeded, SOURCE, None, self.archive, self.page + b'\n')
+            with self.assertRaisesRegex(ValueError, 'differs from the checkpoint'):
+                github_sync_portal.run(env, tracker, seed_revision=SOURCE)
+            self.assertEqual(storage.current(), advanced)
+            with self.assertRaisesRegex(ValueError, 'manually dispatched main'):
+                github_sync_portal.run({**env, 'GITHUB_EVENT_NAME': 'schedule'}, tracker, seed_revision=SOURCE)
 
     def test_rotated_release_keeps_collector_and_historical_backup_credentials_separate(self):
         original = self.seed()['stagedRevision']

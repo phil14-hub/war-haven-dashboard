@@ -15,11 +15,13 @@ from urllib.request import Request, urlopen
 BACKEND_URL = 'https://portal.warhavenclan.com'
 CLAN_ARCHIVE_BACKUP_PATH = '/members/api/clan-archive-backup'
 CLAN_STORAGE_PATH = '/members/api/clan-storage'
+CLAN_STORAGE_BACKUP_PATH = '/members/api/clan-storage-backup'
 CLAN_STORAGE_PAGES_PATH = '/members/api/clan-storage-pages'
 CLAN_STORAGE_STAGING_PATH = '/members/api/clan-storage-staging'
 CLAN_STORAGE_STAGING_BACKUP_PATH = '/members/api/clan-storage-staging-backup'
 STAGING_PATHS = (CLAN_STORAGE_STAGING_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH)
-ARCHIVE_PATHS = (CLAN_ARCHIVE_BACKUP_PATH, CLAN_STORAGE_PATH, CLAN_STORAGE_PAGES_PATH, *STAGING_PATHS)
+BACKUP_PATHS = (CLAN_ARCHIVE_BACKUP_PATH, CLAN_STORAGE_BACKUP_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH)
+ARCHIVE_PATHS = (*BACKUP_PATHS, CLAN_STORAGE_PATH, CLAN_STORAGE_PAGES_PATH, CLAN_STORAGE_STAGING_PATH)
 MACHINE_AUDIENCES = {CLAN_STORAGE_PAGES_PATH: 'war-haven-pages', **dict.fromkeys(STAGING_PATHS, 'war-haven-storage-staging')}
 # The service requires current dashboard-passphrase proof on every data/action request.
 ENABLED = True
@@ -85,7 +87,7 @@ class Client:
                 release_object = (route == CLAN_STORAGE_PAGES_PATH or
                                   route in (CLAN_STORAGE_PATH, CLAN_STORAGE_STAGING_PATH)
                                   and path.partition('?')[2].startswith('kind='))
-                if method == 'GET' and (route in (CLAN_ARCHIVE_BACKUP_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH) or release_object):
+                if method == 'GET' and (route in BACKUP_PATHS or release_object):
                     limit = 70 * 1024 * 1024
                     contents = response.read(limit + 1)
                     if len(contents) > limit:
@@ -93,7 +95,7 @@ class Client:
                     checksum_header = 'X-Object-SHA256' if release_object else 'X-Archive-SHA256'
                     result = {'body': contents, 'sha256': response.headers.get(checksum_header),
                               'source': response.headers.get('X-Archive-Source')}
-                    if route in (CLAN_STORAGE_PAGES_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH):
+                    if route in (CLAN_STORAGE_PAGES_PATH, CLAN_STORAGE_BACKUP_PATH, CLAN_STORAGE_STAGING_BACKUP_PATH):
                         result['revision'] = response.headers.get('X-Archive-Revision')
                     return result
                 return json.load(response)

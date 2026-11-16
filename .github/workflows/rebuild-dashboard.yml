@@ -1,4 +1,6 @@
 name: Publish dashboard code from saved history
+env:
+  WAR_HAVEN_CLAN_STORAGE_R2: ${{ github.ref == 'refs/heads/main' && vars.CLAN_STORAGE_R2_ENABLED == 'true' }}
 on:
   workflow_dispatch:
     inputs:
