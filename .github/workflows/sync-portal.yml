@@ -2,6 +2,8 @@ name: Synchronize member and leadership portal
 env:
   WAR_HAVEN_CLAN_STORAGE_R2: ${{ github.ref == 'refs/heads/main' && vars.CLAN_STORAGE_R2_ENABLED == 'true' }}
 on:
+  repository_dispatch:
+    types: [war-haven-r2-password]
   workflow_dispatch:
     inputs:
       seed_r2_revision:
@@ -33,7 +35,7 @@ concurrency:
   queue: single
 jobs:
   maintenance:
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event_name != 'repository_dispatch' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -55,7 +57,7 @@ jobs:
       group: war-haven-clan-update
       cancel-in-progress: false
       queue: max
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && (github.event_name != 'repository_dispatch' || vars.CLAN_STORAGE_R2_ENABLED == 'true') && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -85,7 +87,7 @@ jobs:
           COLLECTOR_JOB_STATUS: ${{ job.status }}
         run: python github_health.py --kind portal --status "$COLLECTOR_JOB_STATUS"
   backup-clan-archive:
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && (github.event_name != 'schedule' || github.event.schedule == '8 17 * * *') && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
+    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event_name != 'repository_dispatch' && (github.event_name != 'schedule' || github.event.schedule == '8 17 * * *') && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 7
     concurrency:
