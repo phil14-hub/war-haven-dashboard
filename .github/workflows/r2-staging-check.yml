@@ -24,6 +24,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  cutover-preflight:
+    if: github.ref == 'refs/heads/storage-migration/r2-sync-staging'
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Report production R2 writer configuration
+        env:
+          R2_WRITER_ENABLED: ${{ vars.CLAN_STORAGE_R2_ENABLED == 'true' }}
+        run: |
+          if [ "$R2_WRITER_ENABLED" = true ]; then
+            echo "Production R2 writer switch is enabled."
+          else
+            echo "Production R2 writer switch is disabled."
+          fi
+
   restore:
     if: github.ref == 'refs/heads/storage-migration/r2-sync-staging'
     runs-on: ubuntu-24.04
