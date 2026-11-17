@@ -10,7 +10,7 @@ on:
       - '**.mjs'
       - '**.cjs'
       - '**.json'
-      - '!data/war_tracker_state.enc.json'
+      - 'index.html'
       - '.github/workflows/**'
       - 'shared/**'
       - 'templates/**'
@@ -26,4 +26,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Reject tracked production output
+        run: |
+          generated=$(git ls-files -- index.html data/war_tracker_state.enc.json)
+          if [ -n "$generated" ]; then
+            printf 'Production output belongs in R2. Remove these tracked files:\n%s\n' "$generated"
+            exit 1
+          fi
       - uses: ./.github/actions/check-release

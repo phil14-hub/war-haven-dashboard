@@ -20,8 +20,7 @@ The collector restores and merges the encrypted archive before changing publishe
 | `shared/`, `member_accounts.js`, other browser sources | Canonical dashboard UI and shared features |
 | `templates/` | Maintained dashboard and unlock HTML templates |
 | `scripts/sync_embedded_assets.py` | Regenerates portable fallbacks; `--check` detects drift |
-| `index.html` | Published encrypted dashboard |
-| `data/war_tracker_state.enc.json` | Complete encrypted archive |
+| Private R2 | Complete encrypted archive and matching GitHub Pages release |
 | `.github/workflows/` | Collection, final capture, source verification and portal delivery |
 
 The separate Sites source owns member authentication, permissions, notifications and database migrations. Its immutable publication generations use one atomic pointer. Repeated delivery of the same publication reuses that generation. Maintenance removes only old generated delivery copies after seven days, retaining the current and previous generations. Encrypted archives, shared records, war evidence and applied migrations are preserved.
