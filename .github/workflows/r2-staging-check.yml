@@ -1,0 +1,136 @@
+name: Verify hosted R2 storage staging
+
+on:
+  push:
+    branches: [storage-migration/r2-sync-staging]
+    paths:
+      - .github/workflows/r2-staging-check.yml
+      - .github/workflows/sync-portal.yml
+      - clan_storage.py
+      - github_sync_portal.py
+      - shared_actions.py
+      - github_stage_pages.py
+      - tests/pages-lock-browser.mjs
+      - data/war_tracker_state.enc.json
+      - index.html
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: war-haven-r2-storage-staging
+  cancel-in-progress: false
+
+jobs:
+  cutover-preflight:
+    if: github.ref == 'refs/heads/storage-migration/r2-sync-staging'
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Report production R2 writer configuration
+        env:
+          R2_WRITER_ENABLED: ${{ vars.CLAN_STORAGE_R2_ENABLED == 'true' }}
+        run: |
+          if [ "$R2_WRITER_ENABLED" = true ]; then
+            echo "Production R2 writer switch is enabled."
+          else
+            echo "Production R2 writer switch is disabled."
+          fi
+
+  restore:
+    if: github.ref == 'refs/heads/storage-migration/r2-sync-staging'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      WAR_HAVEN_CLAN_STORAGE_STAGE: 'true'
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the archive encryption dependency
+        run: python -m pip install --disable-pip-version-check cryptography==50.0.2
+      - name: Exercise the production workflow paths against isolated storage
+        run: python -m unittest discover -s tests -p 'test_clan_storage_staging.py'
+      - name: Verify the pinned Git checkpoint without replacing the R2 release
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          import github_collector
+          import member_exports
+          import snapshot_audit
+          from clan_storage import verified_state
+
+          tracker = github_collector.load_tracker()
+          password = os.environ['DASHBOARD_PASSWORD']
+          archive = Path('data/war_tracker_state.enc.json').read_bytes()
+          page = Path('index.html')
+          state = verified_state(archive, tracker, password)
+          view = member_exports.build_snapshot(state, tracker)
+          snapshot_audit.verify(state, tracker, view=view)
+          member_exports.verify_staged_projection(state, page, password, tracker, view)
+          print('Git checkpoint archive SHA-256:', hashlib.sha256(archive).hexdigest())
+          print('Git checkpoint page SHA-256:', hashlib.sha256(page.read_bytes()).hexdigest())
+          PY
+      - name: Verify the existing isolated R2 release or initialize it if empty
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: python github_sync_portal.py --seed-r2-staging
+      - name: Reuse the immutable release and verify both dashboard inputs
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: python github_sync_portal.py
+      - name: Restore the separate daily copy and verify that a retry reuses it
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: |
+          python github_sync_portal.py --verify-clan-archive-backup
+          python github_sync_portal.py --verify-clan-archive-backup
+      - name: Prepare the encrypted Pages artifact from R2
+        run: |
+          python - <<'PY'
+          import filecmp
+          import os
+          from pathlib import Path
+
+          from github_stage_pages import stage_pages
+
+          output = Path(os.environ['RUNNER_TEMP'])
+          first = output / 'war-haven-pages'
+          retry = output / 'war-haven-pages-retry'
+          revision = stage_pages(first)
+          stage_pages(retry, revision)
+          for name in ('index.html', '.nojekyll'):
+              if not filecmp.cmp(first / name, retry / name, shallow=False):
+                  raise ValueError('The Pages retry did not reuse the exact saved artifact.')
+          print('The exact R2 release produced an identical Pages retry.')
+          PY
+      - name: Install the Pages browser test tools
+        run: |
+          npm ci --ignore-scripts
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify Pages unlock on desktop and mobile
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: node tests/pages-lock-browser.mjs "$RUNNER_TEMP/war-haven-pages/index.html"
+      - name: Upload the staging Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          name: war-haven-pages-staging
+          path: ${{ runner.temp }}/war-haven-pages
+          retention-days: 1
+          include-hidden-files: true

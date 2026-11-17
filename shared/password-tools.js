@@ -129,23 +129,61 @@ const PasswordTools=(()=>{
     }
     return {published,commit:written.sha,envelope:nextPage};
   }
-  return {encrypt,decrypt,validateReplacement,rotate,sealSecret,base64,bytes};
+  async function stagedRequest(input){
+    const response=await fetch('/members/api/admin/staged-password',{cache:'no-store',credentials:'same-origin',
+      ...(input?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)}:{})});
+    const result=await response.json();
+    if(!response.ok)throw Error(result.error||'The staged passphrase change could not be confirmed.');
+    if(!/^[a-f0-9]{64}$/.test(result.revision))throw Error('The staged release could not be verified.');
+    return result;
+  }
+  async function rotateStaged({current,replacement,confirmation,revision}){
+    validateReplacement(current,replacement,confirmation);
+    if(!revision)throw Error('Reopen the password dialog to load the staged release.');
+    return stagedRequest({current,replacement,expectedRevision:revision});
+  }
+  return {encrypt,decrypt,validateReplacement,rotate,rotateStaged,stagedRequest,sealSecret,base64,bytes};
 })();
+let stagedPasswordLoad;
 function openPasswordChange(){if((window.warHavenIndividual&&window.warHavenAccountRole!=='owner')||!document.getElementById('settings-password')||!document.getElementById('password-form')||!document.getElementById('password-dialog'))return;
   $('settings-dialog').close();$('password-form').reset();$('password-result').textContent='';$('password-progress').textContent='';$('password-load').hidden=true;
   $('password-dialog').showModal();
+  if(window.warHavenStagedPasswordRotation){
+    const token=$('password-github-token'),submit=$('change-password-submit');
+    token.closest('details').hidden=true;token.required=false;
+    $('password-title').textContent='Change staged shared password';submit.textContent='Change staged password';
+    const description=$('password-form').previousElementSibling;
+    if(description)description.textContent='Use the current shared passphrase to unlock the staged archive and page.';
+    submit.disabled=true;$('password-progress').textContent='Checking the staged release…';
+    const load=stagedPasswordLoad={revision:null};
+    PasswordTools.stagedRequest().then(result=>{
+      if(stagedPasswordLoad!==load)return;
+      load.revision=result.revision;submit.disabled=false;$('password-progress').textContent='';
+    }).catch(()=>{
+      if(stagedPasswordLoad!==load)return;
+      $('password-progress').textContent='';$('password-result').textContent='The staged release is unavailable. Reopen the dialog to retry.';
+    });
+  }
 }
 function wirePasswordChange(){if((window.warHavenIndividual&&window.warHavenAccountRole!=='owner')||!document.getElementById('settings-password')||!document.getElementById('password-form')||!document.getElementById('password-dialog'))return;
   $('settings-password').onclick=openPasswordChange;
   let changing=false;
   $('password-dialog').addEventListener('cancel',event=>{if(changing)event.preventDefault();});
-  $('password-dialog').addEventListener('close',()=>$('password-form').reset());
+  $('password-dialog').addEventListener('close',()=>{stagedPasswordLoad=null;$('password-form').reset();});
   $('password-form').onsubmit=async event=>{
     event.preventDefault();if(changing)return;
     changing=true;const button=$('change-password-submit');button.disabled=true;$('close-password').disabled=true;
     const input={current:$('current-password').value,replacement:$('new-password').value,confirmation:$('confirm-password').value,token:$('password-github-token').value.trim(),loadedEnvelope:globalThis.warHavenEnvelope,progress:text=>$('password-progress').textContent=text};
     $('password-result').textContent='';
     try{
+      if(window.warHavenStagedPasswordRotation){
+        $('password-progress').textContent='Verifying and re-encrypting the staged release…';
+        const result=await PasswordTools.rotateStaged({...input,revision:stagedPasswordLoad?.revision});
+        stagedPasswordLoad.revision=result.revision;
+        $('password-form').reset();$('password-progress').textContent='';
+        $('password-result').className='notice';$('password-result').textContent='The staged page, archive and collector now use the new passphrase.';
+        return;
+      }
       const result=await PasswordTools.rotate(input);
       globalThis.warHavenEnvelope=result.envelope;
       $('password-form').reset();$('password-progress').textContent='Password updated in GitHub. The website is publishing.';
