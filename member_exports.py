@@ -319,6 +319,8 @@ def publish(state, dashboard, client, password, tracker, view=None):
     result = client.request('/members/api/ingest', publication)
     print('Member projection synchronized (' + str(result.get('members', 0)) + ' members; ' + str(result.get('bytes', 0)) + ' bytes).')
     raw_bytes = len(json.dumps(state, ensure_ascii=False, separators=(',', ':')).encode())
-    print('Storage check: complete uncompressed history ' + str(raw_bytes) + ' bytes of the 52428800-byte safeguard; leadership publication ' + str(dashboard.stat().st_size) + ' bytes.')
+    stored_document = tracker.archive_document(state)
+    stored_bytes = len(json.dumps(stored_document, ensure_ascii=False, separators=(',', ':')).encode())
+    print('Storage check: complete logical history ' + str(raw_bytes) + ' bytes; packed archive document ' + str(stored_bytes) + ' bytes of the 52428800-byte safeguard; leadership publication ' + str(dashboard.stat().st_size) + ' bytes.')
     return result
 

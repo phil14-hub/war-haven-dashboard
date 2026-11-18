@@ -82,6 +82,10 @@ jobs:
     if: inputs.storage_optimization != true && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.storage_inventory == true && vars.CLAN_STORAGE_R2_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    concurrency:
+      group: war-haven-clan-update
+      cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@v4
         with:
@@ -129,6 +133,14 @@ jobs:
                       and (timestamp(state.get('policyStart')) or now) <= (timestamp(war.get('endTime')) or now) <= now]
           print(json.dumps({'revision': index['revision'], 'policyStart': state.get('policyStart'),
                             'recent': [row(war) for war in recent], 'incompleteTracked': [row(war) for war in affected]}))
+          delivery = Client('').request('/members/api/publication-source', {'read': True}).get('source') or {}
+          delivery_verified = (delivery.get('r2Revision') == index['revision'] and
+                               delivery.get('historySha') == index['archive']['sha256'] and
+                               delivery.get('pageSha') == index['page']['sha256'] and delivery.get('pagesConfirmed') is True)
+          if not delivery_verified:
+              raise ValueError('The current release does not have matching portal and confirmed Pages delivery.')
+          print(json.dumps({'deliveryVerification': {'verified': True, 'revision': index['revision'],
+                                                     'publication': delivery.get('publication'), 'pagesConfirmed': True}}))
           print(json.dumps({'archiveStorageAudit': summarize(state)}))
           print(json.dumps({'websiteStorageAudit': Client('').request(CLAN_STORAGE_PATH + '?inventory=2', method='GET')}))
           PY
