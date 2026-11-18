@@ -10,6 +10,10 @@ on:
         description: Report production backup object counts and bytes without changing storage
         type: boolean
         default: false
+      war_audit:
+        description: Include an aggregate final-war audit in the read-only inventory run
+        type: boolean
+        default: false
       seed_r2_revision:
         description: Full pinned main commit to seed into empty production R2 storage
         required: false
@@ -56,6 +60,37 @@ jobs:
           from shared_actions import CLAN_STORAGE_PATH, Client
           result = Client('').request(CLAN_STORAGE_PATH + '?inventory=1', method='GET')
           print(json.dumps(result, indent=2))
+          PY
+
+      - name: Audit saved final-war status
+        if: inputs.war_audit == true
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: |
+          python -m pip install --disable-pip-version-check cryptography==50.0.2
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from clan_storage import StagedClanStorage
+          from github_collector import load_tracker
+          from war_end_updates import timestamp
+          index, _, state = StagedClanStorage(production=True).restore(load_tracker(), os.environ['DASHBOARD_PASSWORD'])
+          now = datetime.now(timezone.utc)
+          recent = sorted(state.get('wars', []), key=lambda war: war.get('endTime') or '')[-10:]
+          fields = ('kind', 'source', 'state', 'endTime', 'observedAt', 'teamSize',
+                    'final', 'rosterComplete', 'reportedAttacks', 'stars', 'opponentStars', 'expEarned', 'captureIssues')
+          def row(war):
+              row = {field: war.get(field) for field in fields}
+              row.update(participants=len(war.get('participants') or []),
+                         pending=not war.get('final') and (timestamp(war.get('endTime')) or now) <= now,
+                         completedWatch=bool(state.get('automaticUpdates', {}).get('postWar', {}).get('watches', {}).get(war.get('id'), {}).get('completedAt')))
+              return row
+          affected = [war for war in state.get('wars', [])
+                      if war.get('kind') in ('Regular', 'CWL') and not war.get('final')
+                      and (timestamp(state.get('policyStart')) or now) <= (timestamp(war.get('endTime')) or now) <= now]
+          print(json.dumps({'revision': index['revision'], 'policyStart': state.get('policyStart'),
+                            'recent': [row(war) for war in recent], 'incompleteTracked': [row(war) for war in affected]}))
           PY
 
   maintenance:
