@@ -79,6 +79,8 @@ jobs:
           from clan_storage import StagedClanStorage
           from github_collector import load_tracker
           from war_end_updates import timestamp
+          from shared_actions import CLAN_STORAGE_PATH, Client
+          from scripts.audit_storage import summarize
           index, _, state = StagedClanStorage(production=True).restore(load_tracker(), os.environ['DASHBOARD_PASSWORD'])
           now = datetime.now(timezone.utc)
           recent = sorted(state.get('wars', []), key=lambda war: war.get('endTime') or '')[-10:]
@@ -95,6 +97,8 @@ jobs:
                       and (timestamp(state.get('policyStart')) or now) <= (timestamp(war.get('endTime')) or now) <= now]
           print(json.dumps({'revision': index['revision'], 'policyStart': state.get('policyStart'),
                             'recent': [row(war) for war in recent], 'incompleteTracked': [row(war) for war in affected]}))
+          print(json.dumps({'archiveStorageAudit': summarize(state)}))
+          print(json.dumps({'websiteStorageAudit': Client('').request(CLAN_STORAGE_PATH + '?inventory=2', method='GET')}))
           PY
 
   maintenance:
