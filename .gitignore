@@ -8,7 +8,11 @@ dashboard_website*.json
 *access*.txt
 *.pem
 
-# Raw clan data and exports: only the encrypted archive belongs in Git
+# Generated production files live in R2
+/index.html
+/data/war_tracker_state.enc.json
+
+# Raw clan data and exports
 war_tracker_state.json*
 tracker_state.json*
 war_tracker_changes.json*
