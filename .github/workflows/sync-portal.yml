@@ -6,6 +6,10 @@ on:
     types: [war-haven-r2-password]
   workflow_dispatch:
     inputs:
+      storage_inventory:
+        description: Report production backup object counts and bytes without changing storage
+        type: boolean
+        default: false
       seed_r2_revision:
         description: Full pinned main commit to seed into empty production R2 storage
         required: false
@@ -34,8 +38,28 @@ concurrency:
   cancel-in-progress: false
   queue: single
 jobs:
+  storage-inventory:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.storage_inventory == true && vars.CLAN_STORAGE_R2_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Read the R2 backup inventory
+        run: |
+          python - <<'PY'
+          import json
+          from shared_actions import CLAN_STORAGE_PATH, Client
+          result = Client('').request(CLAN_STORAGE_PATH + '?inventory=1', method='GET')
+          print(json.dumps(result, indent=2))
+          PY
+
   maintenance:
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event_name != 'repository_dispatch' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
+    if: inputs.storage_inventory != true && vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event_name != 'repository_dispatch' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -57,7 +81,7 @@ jobs:
       group: war-haven-clan-update
       cancel-in-progress: false
       queue: max
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && (github.event_name != 'repository_dispatch' || vars.CLAN_STORAGE_R2_ENABLED == 'true') && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
+    if: inputs.storage_inventory != true && vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && (github.event_name != 'repository_dispatch' || vars.CLAN_STORAGE_R2_ENABLED == 'true') && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -87,7 +111,7 @@ jobs:
           COLLECTOR_JOB_STATUS: ${{ job.status }}
         run: python github_health.py --kind portal --status "$COLLECTOR_JOB_STATUS"
   backup-clan-archive:
-    if: vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event_name != 'repository_dispatch' && (github.event_name != 'schedule' || github.event.schedule == '8 17 * * *') && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
+    if: inputs.storage_inventory != true && vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event_name != 'repository_dispatch' && (github.event_name != 'schedule' || github.event.schedule == '8 17 * * *') && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 7
     concurrency:
@@ -119,7 +143,7 @@ jobs:
             python github_sync_portal.py --verify-clan-archive-backup
           fi
   seed-production:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.seed_r2_revision && (!inputs.staging || inputs.staging == 'off') && vars.CLAN_STORAGE_R2_ENABLED != 'true'
+    if: inputs.storage_inventory != true && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.seed_r2_revision && (!inputs.staging || inputs.staging == 'off') && vars.CLAN_STORAGE_R2_ENABLED != 'true'
     concurrency:
       group: war-haven-clan-update
       cancel-in-progress: false
@@ -142,7 +166,7 @@ jobs:
           CHECKPOINT: ${{ inputs.seed_r2_revision }}
         run: python github_sync_portal.py --seed-r2-production "$CHECKPOINT"
   staging:
-    if: github.event_name == 'workflow_dispatch' && (inputs.staging == 'seed' || inputs.staging == 'verify' || inputs.staging == 'daily-backup') && !inputs.seed_r2_revision
+    if: inputs.storage_inventory != true && github.event_name == 'workflow_dispatch' && (inputs.staging == 'seed' || inputs.staging == 'verify' || inputs.staging == 'daily-backup') && !inputs.seed_r2_revision
     concurrency:
       group: war-haven-clan-update
       cancel-in-progress: false
