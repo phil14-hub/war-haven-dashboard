@@ -10,7 +10,7 @@ class ArchiveStorageLayoutTests(unittest.TestCase):
     def fixture(self):
         state = tracker.new_state(tracker.DEFAULT_CLAN_TAG)
         state['recruiter'] = {'format': 1, 'files': {'detected_leavers.json': {'players': {
-            '#P0Y': {'lifecycle': 'ARCHIVED', 'joinedMyClanAt': '2026-01-01T00:00:00Z',
+            '#P0Y': {'tag': '#P0Y', 'profileLink': 'https://link.clashofclans.com/en?action=OpenPlayerProfile&tag=P0Y', 'lifecycle': 'ARCHIVED', 'joinedMyClanAt': '2026-01-01T00:00:00Z',
                       'events': [{'at': '2026-01-01', 'type': 'verification', 'detail': 'full evidence ' * 50} for _ in range(100)]}}}},
                               'unknownFutureField': ['retain this too']}
         state['memberProgress'] = {'#P0Y': {'legacyCalculation': list(range(2500))}}
@@ -40,6 +40,19 @@ class ArchiveStorageLayoutTests(unittest.TestCase):
         packed['_archiveStorage']['sections']['recruiter']['bytes'] = tracker.MAX_STATE_BYTES + 1
         with self.assertRaises(ValueError):
             tracker.restore_archive_document(packed)
+
+    def test_cold_events_and_generated_links_round_trip_and_detect_corruption(self):
+        state = self.fixture()
+        recruiter = state['recruiter']
+        packed, changed = tracker.pack_recruiter_history(recruiter)
+        self.assertTrue(changed)
+        active = packed['state']['files']['detected_leavers.json']['players']['#P0Y']
+        self.assertEqual(active['events'], [])
+        self.assertNotIn('profileLink', active)
+        self.assertEqual(tracker.restore_recruiter_history(copy.deepcopy(packed)), recruiter)
+        packed['coldEvents']['sha256'] = '0' * 64
+        with self.assertRaises(ValueError):
+            tracker.restore_recruiter_history(packed)
 
     def test_old_archive_is_still_supported(self):
         # The cryptographic v1 envelope uses identical authenticated clear bytes.

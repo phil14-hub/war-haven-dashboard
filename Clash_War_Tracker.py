@@ -1365,6 +1365,73 @@ def aes_cbc_decrypt(key, iv, ciphertext):
         return b''.join(cipher.decrypt(ciphertext[i:i+16]) for i in range(0, len(ciphertext), 16))
 
 
+def pack_recruiter_history(value):
+    """Keep a small working record plus lossless, checksummed cold event histories."""
+    import gzip
+    document = copy.deepcopy(value)
+    players = ((document.get('files') or {}).get('detected_leavers.json') or {}).get('players') if isinstance(document, dict) else None
+    if not isinstance(players, dict):
+        return value, False
+    events, links = {}, []
+    for tag, record in players.items():
+        if not isinstance(record, dict):
+            continue
+        history = record.get('events')
+        if isinstance(history, list):
+            raw = json.dumps(history, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+            if len(raw) > 1024:
+                events[tag] = history
+                record['events'] = []
+        clean = normalize_tag(record.get('tag')).lstrip('#')
+        if clean and record.get('profileLink') == 'https://link.clashofclans.com/en?action=OpenPlayerProfile&tag=' + clean:
+            links.append(tag)
+            del record['profileLink']
+    if not events and not links:
+        return value, False
+    raw = json.dumps(events, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    if len(raw) > MAX_STATE_BYTES:
+        raise ValueError('Cold recruiter history exceeds its supported size.')
+    cold = {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),
+            'body': base64.b64encode(gzip.compress(raw, compresslevel=9, mtime=0)).decode('ascii')}
+    return {'version': 1, 'state': document, 'coldEvents': cold, 'generatedProfileLinks': links}, True
+
+
+def restore_recruiter_history(document):
+    import gzip
+    import io
+    if not isinstance(document, dict) or document.get('version') != 1 or not isinstance(document.get('coldEvents'), dict) or not isinstance(document.get('generatedProfileLinks'), list):
+        raise ValueError('Invalid cold recruiter history directory.')
+    value = document.get('state')
+    players = ((value.get('files') or {}).get('detected_leavers.json') or {}).get('players') if isinstance(value, dict) else None
+    if not isinstance(players, dict):
+        raise ValueError('Missing recruiter records for cold history.')
+    entry = document['coldEvents']
+    size = entry.get('bytes')
+    if type(size) is not int or not 0 < size <= MAX_STATE_BYTES:
+        raise ValueError('Invalid cold event history size.')
+    with gzip.GzipFile(fileobj=io.BytesIO(base64.b64decode(entry['body'], validate=True))) as stream:
+        raw = stream.read(size + 1)
+    if len(raw) != size or not hmac.compare_digest(hashlib.sha256(raw).hexdigest(), str(entry.get('sha256', ''))):
+        raise ValueError('Cold recruiter event history did not verify.')
+    histories = json.loads(raw.decode('utf-8'))
+    if not isinstance(histories, dict):
+        raise ValueError('Invalid cold recruiter event history.')
+    for tag, history in histories.items():
+        record = players.get(tag)
+        if not isinstance(record, dict) or record.get('events') != [] or not isinstance(history, list):
+            raise ValueError('Invalid cold event history reference.')
+        record['events'] = history
+    for tag in document['generatedProfileLinks']:
+        record = players.get(tag)
+        if not isinstance(record, dict) or 'profileLink' in record:
+            raise ValueError('Invalid generated profile link reference.')
+        clean = normalize_tag(record.get('tag')).lstrip('#')
+        if not clean:
+            raise ValueError('Missing player tag for generated profile link.')
+        record['profileLink'] = 'https://link.clashofclans.com/en?action=OpenPlayerProfile&tag=' + clean
+    return value
+
+
 def archive_document(state):
     """Versioned lossless sections keep verbose derived/recruiting JSON out of the hot document.
 
@@ -1380,14 +1447,18 @@ def archive_document(state):
     for field in ('recruiter', 'memberProgress'):
         if field not in document:
             continue
-        raw = json.dumps(document[field], ensure_ascii=False, separators=(',', ':')).encode('utf-8')
-        if len(raw) < 1024:
+        logical = json.dumps(document[field], ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+        value, cold = pack_recruiter_history(document[field]) if field == 'recruiter' else (document[field], False)
+        raw = json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        if len(logical) < 1024:
             continue
         if len(raw) > MAX_STATE_BYTES:
             raise ValueError('An archive section exceeds its supported size.')
-        sections[field] = {'version': 1, 'encoding': 'gzip-base64', 'bytes': len(raw),
+        sections[field] = {'version': 2 if cold else 1, 'encoding': 'gzip-base64', 'bytes': len(raw),
                            'sha256': hashlib.sha256(raw).hexdigest(),
                            'body': base64.b64encode(gzip.compress(raw, compresslevel=9, mtime=0)).decode('ascii')}
+        if cold:
+            sections[field].update(transform='recruiter-cold-v1', logicalSHA256=hashlib.sha256(logical).hexdigest())
         del document[field]
     if sections:
         document['_archiveStorage'] = {'version': 2, 'sections': sections}
@@ -1407,14 +1478,22 @@ def restore_archive_document(document):
         if field not in ('recruiter', 'memberProgress') or field in restored or not isinstance(entry, dict):
             raise ValueError('Invalid archive section.')
         size = entry.get('bytes')
-        if entry.get('version') != 1 or entry.get('encoding') != 'gzip-base64' or type(size) is not int or not 0 < size <= MAX_STATE_BYTES:
+        if entry.get('version') not in (1, 2) or entry.get('encoding') != 'gzip-base64' or type(size) is not int or not 0 < size <= MAX_STATE_BYTES:
             raise ValueError('Unsupported archive section settings.')
         packed = base64.b64decode(entry['body'], validate=True)
         with gzip.GzipFile(fileobj=io.BytesIO(packed)) as stream:
             raw = stream.read(size + 1)
         if len(raw) != size or not hmac.compare_digest(hashlib.sha256(raw).hexdigest(), str(entry.get('sha256', ''))):
             raise ValueError('The archive section did not verify.')
-        restored[field] = json.loads(raw.decode('utf-8'))
+        value = json.loads(raw.decode('utf-8'))
+        if entry['version'] == 2:
+            if field != 'recruiter' or entry.get('transform') != 'recruiter-cold-v1':
+                raise ValueError('Unsupported cold archive section.')
+            value = restore_recruiter_history(value)
+            logical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+            if not hmac.compare_digest(hashlib.sha256(logical).hexdigest(), str(entry.get('logicalSHA256', ''))):
+                raise ValueError('Restored recruiter history did not verify.')
+        restored[field] = value
     return restored
 
 
