@@ -6,6 +6,10 @@ on:
     types: [war-haven-r2-password]
   workflow_dispatch:
     inputs:
+      storage_retention:
+        description: Verify recovery points and compact unreferenced production storage
+        type: boolean
+        default: false
       storage_inventory:
         description: Report production backup object counts and bytes without changing storage
         type: boolean
@@ -94,7 +98,7 @@ jobs:
           PY
 
   maintenance:
-    if: inputs.storage_inventory != true && vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event_name != 'repository_dispatch' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
+    if: inputs.storage_retention != true && inputs.storage_inventory != true && vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event_name != 'repository_dispatch' && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -116,7 +120,7 @@ jobs:
       group: war-haven-clan-update
       cancel-in-progress: false
       queue: max
-    if: inputs.storage_inventory != true && vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && (github.event_name != 'repository_dispatch' || vars.CLAN_STORAGE_R2_ENABLED == 'true') && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
+    if: inputs.storage_retention != true && inputs.storage_inventory != true && vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && (github.event_name != 'repository_dispatch' || vars.CLAN_STORAGE_R2_ENABLED == 'true') && github.event.schedule != '8 17 * * *' && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -146,7 +150,7 @@ jobs:
           COLLECTOR_JOB_STATUS: ${{ job.status }}
         run: python github_health.py --kind portal --status "$COLLECTOR_JOB_STATUS"
   backup-clan-archive:
-    if: inputs.storage_inventory != true && vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event_name != 'repository_dispatch' && (github.event_name != 'schedule' || github.event.schedule == '8 17 * * *') && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
+    if: inputs.storage_retention != true && inputs.storage_inventory != true && vars.CLAN_AUTO_UPDATES_ENABLED == 'true' && github.event_name != 'repository_dispatch' && (github.event_name != 'schedule' || github.event.schedule == '8 17 * * *') && (!inputs.staging || inputs.staging == 'off') && !inputs.seed_r2_revision
     runs-on: ubuntu-latest
     timeout-minutes: 7
     concurrency:
@@ -177,8 +181,79 @@ jobs:
           else
             python github_sync_portal.py --verify-clan-archive-backup
           fi
+  storage-retention:
+    needs: backup-clan-archive
+    if: >-
+      always() && github.ref == 'refs/heads/main' && vars.CLAN_STORAGE_R2_ENABLED == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.storage_retention == true && inputs.storage_inventory != true) ||
+       (github.event_name == 'schedule' && github.event.schedule == '8 17 * * *' && needs.backup-clan-archive.result == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: war-haven-clan-update
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install archive verification
+        run: python -m pip install --disable-pip-version-check cryptography==50.0.2
+      - name: Verify recovery, compact storage, and prove an identical retry adds no objects
+        env:
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from clan_storage import StagedClanStorage, verified_state
+          from github_collector import load_tracker
+          from github_sync_portal import read_clan_archive_backup
+          from shared_actions import CLAN_STORAGE_PATH, Client
+          from war_end_updates import timestamp
+          client = Client('')
+          storage = StagedClanStorage(client, production=True)
+          tracker = load_tracker()
+          password = os.environ['DASHBOARD_PASSWORD']
+          before = client.request(CLAN_STORAGE_PATH + '?inventory=1', method='GET')
+          plan = client.request(CLAN_STORAGE_PATH + '?retention=1', method='GET')
+          index, archive, state = storage.restore(tracker, password)
+          page = storage.read('page', index)
+          if index['revision'] != plan['revision']:
+              raise ValueError('The current release changed before retention.')
+          if index.get('previousRevision'):
+              previous = storage.release(index['previousRevision'])
+              verified_state(storage.read('archive', previous), tracker, storage.release_password(previous, password))
+              storage.read('page', previous)
+          config = {'password': password}
+          def restore_days():
+              return {day: hashlib.sha256(read_clan_archive_backup(config, tracker, client, day, production=True)).hexdigest()
+                      for day in plan['dailyDays']}
+          daily_before = restore_days()
+          result = client.request(CLAN_STORAGE_PATH + '?retention=1&revision=' + index['revision'], method='POST')
+          if restore_days() != daily_before:
+              raise ValueError('Daily archive restoration changed after retention.')
+          after_index, after_archive, _ = storage.restore(tracker, password)
+          if after_index != index or after_archive != archive or storage.read('page', index) != page:
+              raise ValueError('The current release changed during retention.')
+          before_retry = client.request(CLAN_STORAGE_PATH + '?inventory=1', method='GET')
+          retry = storage.store(index, index['source'], timestamp(index['nextWarUpdateAt']), archive, page)
+          after = client.request(CLAN_STORAGE_PATH + '?inventory=1', method='GET')
+          for group in ('productionArchive', 'productionPages', 'productionReleases'):
+              if after['groups'][group] != before_retry['groups'][group]:
+                  raise ValueError('An identical retry added stored release objects.')
+          if retry != index:
+              raise ValueError('An identical retry changed the release.')
+          print(json.dumps({'before': before, 'plan': plan, 'applied': result, 'after': after,
+                            'restoredDailyDates': sorted(daily_before), 'identicalRetryAddedLargeObjects': 0}))
+          PY
   seed-production:
-    if: inputs.storage_inventory != true && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.seed_r2_revision && (!inputs.staging || inputs.staging == 'off') && vars.CLAN_STORAGE_R2_ENABLED != 'true'
+    if: inputs.storage_retention != true && inputs.storage_inventory != true && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.seed_r2_revision && (!inputs.staging || inputs.staging == 'off') && vars.CLAN_STORAGE_R2_ENABLED != 'true'
     concurrency:
       group: war-haven-clan-update
       cancel-in-progress: false
@@ -201,7 +276,7 @@ jobs:
           CHECKPOINT: ${{ inputs.seed_r2_revision }}
         run: python github_sync_portal.py --seed-r2-production "$CHECKPOINT"
   staging:
-    if: inputs.storage_inventory != true && github.event_name == 'workflow_dispatch' && (inputs.staging == 'seed' || inputs.staging == 'verify' || inputs.staging == 'daily-backup') && !inputs.seed_r2_revision
+    if: inputs.storage_retention != true && inputs.storage_inventory != true && github.event_name == 'workflow_dispatch' && (inputs.staging == 'seed' || inputs.staging == 'verify' || inputs.staging == 'daily-backup') && !inputs.seed_r2_revision
     concurrency:
       group: war-haven-clan-update
       cancel-in-progress: false
