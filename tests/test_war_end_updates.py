@@ -71,6 +71,33 @@ class TimingTests(unittest.TestCase):
         self.assertEqual(len(state['wars']), 1)
         self.assertEqual(state['wars'][0]['expEarned'], 150)
 
+    def test_one_second_war_log_skew_repairs_saved_summary_and_keeps_final_attacks(self):
+        state = fixture(final=True)
+        actual = state['wars'][0]
+        actual.update(teamSize=20, stars=54, opponentStars=46, reportedAttacks=33,
+                      opponent={'tag':'#P0Y'}, participants=[{'tag':'#P0Q', 'attacksUsed':2}])
+        raw = {'endTime':timing.iso(NOW+timedelta(seconds=1)), 'teamSize':20,
+               'attacksPerMember':2, 'result':'win',
+               'clan':{'stars':54, 'expEarned':350}, 'opponent':{'tag':'#P0Y', 'stars':46}}
+        summary = {'id':'duplicate', 'kind':'Regular', 'source':'War-log summary',
+                   'endTime':raw['endTime'], 'teamSize':20, 'stars':54, 'opponentStars':46,
+                   'expEarned':350, 'result':'win', 'participants':[], 'opponent':{'tag':'#P0Y'}}
+        state['wars'].append(summary)
+        tracker.reconcile_war_log_summaries(state)
+        tracker.add_summaries(state, {'items':[raw]})
+        self.assertEqual(state['wars'], [actual])
+        self.assertEqual(actual['id'], 'Regular:fixture')
+        self.assertEqual(actual['expEarned'], 350)
+        self.assertEqual(actual['participants'], [{'tag':'#P0Q', 'attacksUsed':2}])
+        self.assertEqual(actual['reportedAttacks'], 33)
+        self.assertTrue(actual['final'])
+        # Similar timestamps cannot override different scores or opponents.
+        for mismatched in ({**summary, 'stars':53}, {**summary, 'opponent':{'tag':'#P0Q'}}):
+            state['wars'].append(mismatched)
+            tracker.reconcile_war_log_summaries(state)
+            self.assertIn(mismatched, state['wars'])
+            state['wars'].remove(mismatched)
+
     def test_elapsed_deadline_does_not_finalize_or_lose_late_attacks(self):
         clan = tracker.DEFAULT_CLAN_TAG
         raw = {'state':'inWar', 'endTime':timing.iso(NOW-timedelta(minutes=30)),

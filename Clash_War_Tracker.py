@@ -496,11 +496,55 @@ def store_war(state, war):
     if matches:
         # Retain the original key so saved exceptions and other references still apply.
         war = {**war, 'id': matches[0]['id']}
+        for field in ('expEarned', 'result'):
+            if war.get(field) is None:
+                retained = next((old[field] for old in matches if old.get(field) is not None), None)
+                if retained is not None:
+                    war[field] = retained
         state['wars'] = [w for w in state['wars'] if w not in matches]
     state['wars'].append(war)
 
+def merge_war_log_summary(state, summary):
+    """Attach aggregate war-log evidence to the unique matching API war."""
+    end = api_time(summary.get('endTime'))
+    opponent = normalize_tag((summary.get('opponent') or {}).get('tag'))
+    if not end or not opponent:
+        return False
+    end_stamp = datetime.fromisoformat(end.replace('Z', '+00:00'))
+    exact, nearby = [], []
+    for war in state['wars']:
+        if war.get('source') != 'API' or war.get('kind') != 'Regular':
+            continue
+        if normalize_tag((war.get('opponent') or {}).get('tag')) != opponent:
+            continue
+        candidate_end = api_time(war.get('endTime'))
+        if candidate_end == end:
+            exact.append(war)
+        elif (candidate_end and war.get('final') and war.get('rosterComplete')
+              and abs((datetime.fromisoformat(candidate_end.replace('Z', '+00:00')) - end_stamp).total_seconds()) <= 1
+              and all(integer(summary.get(field)) and war.get(field) == summary[field]
+                      for field in ('teamSize', 'stars', 'opponentStars'))):
+            nearby.append(war)
+    matches = exact or nearby
+    if len(matches) != 1:
+        return False
+    war = matches[0]
+    xp = summary.get('expEarned')
+    if integer(xp) and xp >= 0:
+        war['expEarned'] = xp
+    if summary.get('result') in ('win', 'lose', 'tie'):
+        war['result'] = summary['result']
+    return True
+
+
+def reconcile_war_log_summaries(state):
+    """Repair already saved duplicate summaries without inventing player results."""
+    state['wars'] = [war for war in state['wars']
+                     if not (war.get('source') == 'War-log summary' and war.get('kind') == 'Regular'
+                             and not war.get('participants') and merge_war_log_summary(state, war))]
+
+
 def add_summaries(state, payload):
-    known = {w['id'] for w in state['wars']}
     for raw in payload.get('items', []):
         enemy = raw.get('opponent') or {}
         ended = api_time(raw.get('endTime'))
@@ -508,19 +552,18 @@ def add_summaries(state, payload):
         if not ended or not enemy.get('tag') or raw.get('attacksPerMember') != 2:
             continue
         identity = 'regular:' + state['clanTag'] + ':' + ended
-        existing = next((w for w in state['wars'] if w['id'] == identity or (w.get('kind') == 'Regular'
-            and w.get('source') == 'API' and api_time(w.get('endTime')) == ended
-            and normalize_tag((w.get('opponent') or {}).get('tag')) == normalize_tag(enemy.get('tag')))), None)
-        if existing is not None:
-            xp = (raw.get('clan') or {}).get('expEarned')
-            if integer(xp) and xp >= 0: existing['expEarned'] = xp
-            continue
-        state['wars'].append({'id':identity,'kind':'Regular','state':'warEnded','endTime':ended,
+        summary = {'id':identity,'kind':'Regular','state':'warEnded','endTime':ended,
             'opponent':{'tag':normalize_tag(enemy.get('tag')),'name':enemy.get('name','Unknown opponent')},
             'teamSize':raw.get('teamSize'),'attacksPerMember':2,'stars':(raw.get('clan') or {}).get('stars'),
             'opponentStars':enemy.get('stars'),'result':raw.get('result'),'expEarned':(raw.get('clan') or {}).get('expEarned'),'participants':[],
-            'rosterComplete':False,'final':False,'source':'War-log summary','observedAt':now_iso()})
-        known.add(identity)
+            'rosterComplete':False,'final':False,'source':'War-log summary','observedAt':now_iso()}
+        if merge_war_log_summary(state, summary):
+            continue
+        existing = next((war for war in state['wars'] if war['id'] == identity), None)
+        if existing is None:
+            state['wars'].append(summary)
+        elif integer(summary['expEarned']) and summary['expEarned'] >= 0:
+            existing['expEarned'] = summary['expEarned']
 
 def event(state, player_tag, player_name, message, kind):
     state['activity'].append({'tag':player_tag,'name':player_name,'message':message,'kind':kind,'detectedAt':now_iso()})
@@ -967,6 +1010,7 @@ def refresh(state, api, profiles=True):
         store_war(state,normalize_war(raw,clan_tag))
     except APIError as error:
         warnings.append('Current regular war: ' + str(error))
+    reconcile_war_log_summaries(state)
     try:
         add_summaries(state,api.get(clan_path + '/warlog?limit=50'))
     except APIError as error:

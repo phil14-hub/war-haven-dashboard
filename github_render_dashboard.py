@@ -55,6 +55,7 @@ def run(env=None, tracker=None):
         client=shared_actions.Client(config['password'])
         if shared_actions.ENABLED:
             shared_actions.pull(state,client,tracker)
+    tracker.reconcile_war_log_summaries(state)
     snapshot_audit.verify(state, tracker)
     with tempfile.TemporaryDirectory(prefix='war-haven-code-release-') as folder:
         path=Path(folder)/'index.html'
