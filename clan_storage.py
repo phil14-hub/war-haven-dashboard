@@ -177,12 +177,19 @@ class StagedUpdate:
         return {'stagedRevision': index['revision']}
 
     def commit_release(self, state, dashboard, source=None, view=None):
-        from member_exports import verify_staged_projection
+        from member_exports import reuse_dashboard_page, verify_staged_projection
 
         verify_staged_projection(state, dashboard, self.password, self.tracker, view)
         archive = self.archive
         if self.tracker.archive_fingerprint(state) != self.fingerprint:
             envelope = self.tracker.encrypt_history(state, self.password)
             archive = json.dumps(envelope, separators=(',', ':')).encode()
+        else:
+            try:
+                previous_page = self.storage.read('page', self.index)
+            except (SharedActionsError, ValueError):
+                previous_page = None
+            if previous_page is not None and reuse_dashboard_page(dashboard, previous_page, self.password, self.tracker):
+                print('Reused the verified encrypted R2 page for identical content.')
         target = next_update(state, datetime.now(timezone.utc))
         return self.storage.store(self.index, source or self.index['source'], target, archive, dashboard.read_bytes())

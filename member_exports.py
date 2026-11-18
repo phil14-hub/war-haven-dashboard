@@ -254,14 +254,50 @@ def fetch_clan_badge(state, tracker):
         return None
 
 
-def leadership_payload(dashboard, password):
-    html = dashboard.read_text()
+def protected_payload(html, password):
     match = re.search(r'id="protected-payload">(.*?)</script>', html, re.S)
     if not match:
         raise ValueError('Protected dashboard payload not found.')
     envelope = json.loads(match.group(1))
     key = hashlib.pbkdf2_hmac('sha256', password.encode(), base64.b64decode(envelope['salt'], validate=True), envelope['rounds'], dklen=64)
+    return match, envelope, key
+
+
+def leadership_payload(dashboard, password):
+    _, envelope, key = protected_payload(dashboard.read_text(), password)
     return envelope, key
+
+
+def authenticated_payload(envelope, key):
+    salt, iv, data, tag = (base64.b64decode(envelope[field], validate=True) for field in ('salt', 'iv', 'ciphertext', 'tag'))
+    authentication = hmac.new(key[32:], b'WarHavenDashboard:v1', hashlib.sha256)
+    for part in (salt, iv, data):
+        authentication.update(part)
+    if not hmac.compare_digest(authentication.digest(), tag):
+        raise ValueError('The staged dashboard page did not authenticate.')
+    return iv, data
+
+
+def reuse_dashboard_page(dashboard, previous, password, tracker):
+    """Reuse ciphertext only when the lock screen and authenticated content match."""
+    try:
+        new_html = dashboard.read_text(encoding='utf-8')
+        old_html = previous.decode('utf-8')
+        new_match, new_envelope, new_key = protected_payload(new_html, password)
+        old_match, old_envelope, old_key = protected_payload(old_html, password)
+        if (new_html[:new_match.start(1)] != old_html[:old_match.start(1)] or
+                new_html[new_match.end(1):] != old_html[old_match.end(1):] or
+                (new_envelope['version'], new_envelope['rounds']) !=
+                (old_envelope['version'], old_envelope['rounds'])):
+            return False
+        new_iv, new_body = authenticated_payload(new_envelope, new_key)
+        old_iv, old_body = authenticated_payload(old_envelope, old_key)
+        if tracker.aes_cbc_decrypt(new_key[:32], new_iv, new_body) != tracker.aes_cbc_decrypt(old_key[:32], old_iv, old_body):
+            return False
+    except (ValueError, KeyError, TypeError):
+        return False
+    dashboard.write_bytes(previous)
+    return True
 
 
 def verify_staged_projection(state, dashboard, password, tracker, view=None):
@@ -269,12 +305,7 @@ def verify_staged_projection(state, dashboard, password, tracker, view=None):
     if view['clan']['tag'] != tracker.DEFAULT_CLAN_TAG:
         raise ValueError('The staged member projection belongs to a different clan.')
     envelope, key = leadership_payload(dashboard, password)
-    salt, iv, data, tag = (base64.b64decode(envelope[field], validate=True) for field in ('salt', 'iv', 'ciphertext', 'tag'))
-    authentication = hmac.new(key[32:], b'WarHavenDashboard:v1', hashlib.sha256)
-    for part in (salt, iv, data):
-        authentication.update(part)
-    if not hmac.compare_digest(authentication.digest(), tag):
-        raise ValueError('The staged dashboard page did not authenticate.')
+    authenticated_payload(envelope, key)
 
 
 def publish(state, dashboard, client, password, tracker, view=None):
