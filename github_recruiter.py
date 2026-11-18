@@ -31,7 +31,16 @@ def compact_report(report):
     if not all(isinstance(groups.get(name), list) for name in ('new', 'still', 'joined_my', 'no_longer')):
         return report
     # Older Pyto trackers use the string field to recognize a cloud report.
-    return {**report, 'html': ''}
+    result = copy.deepcopy(report)
+    result['html'] = ''
+    for rows in [*result['groups'].values(), result.get('joinedHistory', [])]:
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, dict) and row.get('detectedAt'):
+                row.pop('detectedAgo', None)
+                row.pop('freshness', None)
+    return result
 
 
 def rebuild_report(state, *, module=None):

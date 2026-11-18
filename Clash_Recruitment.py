@@ -1077,8 +1077,6 @@ def fetch_roster(api, clan):
             member_map[ptag] = {
                 "name": m.get("name", ""),
                 "townHallLevel": safe_int(m.get("townHallLevel")),
-                "expLevel": safe_int(m.get("expLevel")),
-                "trophies": safe_int(m.get("trophies")),
             }
         return tag, member_map, captured_at, None
     except Exception as exc:
