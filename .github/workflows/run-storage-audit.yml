@@ -1,0 +1,18 @@
+name: Request the full read-only storage audit
+on:
+  push:
+    branches: [ops/run-storage-audit]
+    paths: [.github/workflows/run-storage-audit.yml]
+permissions: {}
+jobs:
+  dispatch:
+    if: github.repository == 'phil14-hub/war-haven-dashboard'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      actions: write
+    steps:
+      - name: Run the current main-branch audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run sync-portal.yml --repo "$GITHUB_REPOSITORY" --ref main -f storage_inventory=true -f war_audit=true
