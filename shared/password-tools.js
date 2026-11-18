@@ -5,7 +5,7 @@ const PasswordTools=(()=>{
   function base64(value){let text='';for(let i=0;i<value.length;i+=32768)text+=String.fromCharCode(...value.subarray(i,i+32768));return btoa(text);}
   function combine(...parts){const out=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const part of parts){out.set(part,at);at+=part.length;}return out;}
   function validate(envelope,context){
-    if(!envelope||envelope.version!==1||!Number.isInteger(envelope.rounds)||envelope.rounds<100000||envelope.rounds>2000000)throw Error('Unsupported encryption settings. No password was changed.');
+    if(!envelope||(envelope.version!==1&&!(context==='WarHavenState:v1'&&envelope.version===2))||!Number.isInteger(envelope.rounds)||envelope.rounds<100000||envelope.rounds>2000000)throw Error('Unsupported encryption settings. No password was changed.');
     if(context==='WarHavenState:v1'&&(envelope.format!=='war-haven-state'||envelope.compression!=='gzip'))throw Error('Unsupported history archive. No password was changed.');
     const salt=bytes(envelope.salt),iv=bytes(envelope.iv),ciphertext=bytes(envelope.ciphertext),tag=bytes(envelope.tag);
     if(salt.length!==16||iv.length!==16||tag.length!==32||!ciphertext.length||ciphertext.length%16||ciphertext.length>limit)throw Error('Invalid encrypted file. No password was changed.');
@@ -94,7 +94,7 @@ const PasswordTools=(()=>{
     let nextPage,nextHistory;
     try{
       nextPage=await encrypt(clearPage,replacement,'WarHavenDashboard:v1');
-      nextHistory=await encrypt(clearHistory,replacement,'WarHavenState:v1',{format:'war-haven-state',version:1,compression:'gzip'});
+      nextHistory=await encrypt(clearHistory,replacement,'WarHavenState:v1',{format:'war-haven-state',version:archive.version,compression:'gzip'});
     }finally{clearPage.fill(0);clearHistory.fill(0);}
     const newPage=encryptedPage.replace(match[0],()=>match[1]+JSON.stringify(nextPage)+match[3]);
     const stateBlob=await api('POST','/git/blobs',{content:JSON.stringify(nextHistory),encoding:'utf-8'});

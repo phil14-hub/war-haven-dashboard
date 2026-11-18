@@ -48,7 +48,8 @@ def summarize(state):
     roster_tags = {row.get('tag') for row in state.get('roster', [])}
     profiles = state.get('profiles') or {}
     inactive = {tag: profile for tag, profile in profiles.items() if tag not in roster_tags}
-    return {'total': describe(state), 'sections': sections,
+    from tracker_core import archive_document
+    return {'total': describe(state), 'storageDocument': describe(archive_document(state)), 'sections': sections,
             'recruiterFiles': {key: describe(value) for key, value in files.items()},
             'recruiterReport': {key: describe(value) for key, value in (recruiter.get('report') or {}).items()},
             'candidateRecordFields': field_totals(players.values()), 'candidateLifecycleCounts': dict(lifecycle),

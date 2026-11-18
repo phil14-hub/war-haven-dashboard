@@ -1365,6 +1365,59 @@ def aes_cbc_decrypt(key, iv, ciphertext):
         return b''.join(cipher.decrypt(ciphertext[i:i+16]) for i in range(0, len(ciphertext), 16))
 
 
+def archive_document(state):
+    """Versioned lossless sections keep verbose derived/recruiting JSON out of the hot document.
+
+    Every section retains its complete content, authenticated digest and size. The
+    envelope remains self-contained so daily downloads and offline restores need
+    no second service, key, or missing cold-history file.
+    """
+    import gzip
+    if '_archiveStorage' in state:
+        raise ValueError('Reserved archive storage metadata in logical state.')
+    document = dict(state)
+    sections = {}
+    for field in ('recruiter', 'memberProgress'):
+        if field not in document:
+            continue
+        raw = json.dumps(document[field], ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        if len(raw) < 1024:
+            continue
+        if len(raw) > MAX_STATE_BYTES:
+            raise ValueError('An archive section exceeds its supported size.')
+        sections[field] = {'version': 1, 'encoding': 'gzip-base64', 'bytes': len(raw),
+                           'sha256': hashlib.sha256(raw).hexdigest(),
+                           'body': base64.b64encode(gzip.compress(raw, compresslevel=9, mtime=0)).decode('ascii')}
+        del document[field]
+    if sections:
+        document['_archiveStorage'] = {'version': 2, 'sections': sections}
+    return document
+
+
+def restore_archive_document(document):
+    import gzip
+    import io
+    metadata = document.get('_archiveStorage')
+    if metadata is None:
+        return document
+    if not isinstance(metadata, dict) or metadata.get('version') != 2 or not isinstance(metadata.get('sections'), dict):
+        raise ValueError('Invalid archive section directory.')
+    restored = {key: value for key, value in document.items() if key != '_archiveStorage'}
+    for field, entry in metadata['sections'].items():
+        if field not in ('recruiter', 'memberProgress') or field in restored or not isinstance(entry, dict):
+            raise ValueError('Invalid archive section.')
+        size = entry.get('bytes')
+        if entry.get('version') != 1 or entry.get('encoding') != 'gzip-base64' or type(size) is not int or not 0 < size <= MAX_STATE_BYTES:
+            raise ValueError('Unsupported archive section settings.')
+        packed = base64.b64decode(entry['body'], validate=True)
+        with gzip.GzipFile(fileobj=io.BytesIO(packed)) as stream:
+            raw = stream.read(size + 1)
+        if len(raw) != size or not hmac.compare_digest(hashlib.sha256(raw).hexdigest(), str(entry.get('sha256', ''))):
+            raise ValueError('The archive section did not verify.')
+        restored[field] = json.loads(raw.decode('utf-8'))
+    return restored
+
+
 def encrypt_history(state, password, rounds=600000):
     """Compress then encrypt the complete archive, with a separate MAC context."""
     import gzip
@@ -1372,7 +1425,7 @@ def encrypt_history(state, password, rounds=600000):
         raise ValueError('Use a dashboard passphrase of at least 12 characters.')
     if not integer(rounds) or not 100000 <= rounds <= 2000000:
         raise ValueError('Invalid password derivation rounds.')
-    raw = json.dumps(state, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    raw = json.dumps(archive_document(state), ensure_ascii=False, separators=(',', ':')).encode('utf-8')
     if len(raw) > MAX_STATE_BYTES:
         raise ValueError('The clan archive exceeds the supported 50 MiB size.')
     raw = gzip.compress(raw, compresslevel=9, mtime=0)
@@ -1382,7 +1435,7 @@ def encrypt_history(state, password, rounds=600000):
     ciphertext = aes_cbc_encrypt(key[:32], iv, raw+bytes([padding])*padding)
     signature = hmac.new(key[32:], STATE_ENCRYPTION_CONTEXT+salt+iv+ciphertext, hashlib.sha256).digest()
     encode = lambda b: base64.b64encode(b).decode('ascii')
-    return {'format': 'war-haven-state', 'version': 1, 'compression': 'gzip', 'rounds': rounds,
+    return {'format': 'war-haven-state', 'version': 2, 'compression': 'gzip', 'rounds': rounds,
             'salt': encode(salt), 'iv': encode(iv), 'ciphertext': encode(ciphertext), 'tag': encode(signature)}
 
 
@@ -1390,7 +1443,7 @@ def decrypt_history(envelope, password):
     import gzip
     import io
     try:
-        if not isinstance(envelope, dict) or envelope.get('format') != 'war-haven-state' or envelope.get('version') != 1 or envelope.get('compression') != 'gzip':
+        if not isinstance(envelope, dict) or envelope.get('format') != 'war-haven-state' or envelope.get('version') not in (1, 2) or envelope.get('compression') != 'gzip':
             raise ValueError('Unsupported archive format.')
         rounds = envelope['rounds']
         if not integer(rounds) or not 100000 <= rounds <= 2000000:
@@ -1412,6 +1465,8 @@ def decrypt_history(envelope, password):
         if len(raw)>MAX_STATE_BYTES:
             raise ValueError('The archive exceeds the supported size.')
         state=json.loads(raw.decode('utf-8'))
+        if envelope.get('version') == 2 and isinstance(state, dict):
+            state=restore_archive_document(state)
         if not isinstance(state,dict) or state.get('schemaVersion')!=1 or not isinstance(state.get('edits'),dict):
             raise ValueError('Invalid clan history snapshot.')
         return state
