@@ -190,6 +190,26 @@ class StagingTests(unittest.TestCase):
             clash.assert_called_once()
             recruiter.assert_called_once()
 
+    def test_identical_render_reuses_both_r2_objects_but_keeps_page_changes(self):
+        self.seed()
+        initial = self.storage.current()
+        release = clan_storage.StagedUpdate(self.storage, tracker, {'password': PASSWORD})
+        self.transport.events.clear()
+        with tempfile.TemporaryDirectory() as folder:
+            page = Path(folder) / 'index.html'
+            state = copy.deepcopy(release.state)
+            tracker.write_dashboard(state, page, password=PASSWORD)
+            self.assertNotEqual(page.read_bytes(), self.page)
+            self.assertEqual(release.commit_release(state, page), initial)
+            self.assertEqual(page.read_bytes(), self.page)
+            self.assertFalse(any(method == 'PUT' for method, *_ in self.transport.events))
+
+            # A lock-screen edit has to be delivered even if the archive is identical.
+            page.write_bytes(self.page + b'\n')
+            edited = release.commit_release(state, page)
+            self.assertEqual(edited['archive'], initial['archive'])
+            self.assertNotEqual(edited['page'], initial['page'])
+
     def test_watcher_uses_only_small_index_and_capture_rechecks_archive(self):
         self.seed()
         current = self.storage.current()
