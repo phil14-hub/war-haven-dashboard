@@ -1465,6 +1465,8 @@ def decrypt_history(envelope, password):
         if len(raw)>MAX_STATE_BYTES:
             raise ValueError('The archive exceeds the supported size.')
         state=json.loads(raw.decode('utf-8'))
+        if isinstance(state, dict) and '_archiveStorage' in state and envelope.get('version') != 2:
+            raise ValueError('The archive layout requires a version-2 reader.')
         if envelope.get('version') == 2 and isinstance(state, dict):
             state=restore_archive_document(state)
         if not isinstance(state,dict) or state.get('schemaVersion')!=1 or not isinstance(state.get('edits'),dict):

@@ -45,7 +45,15 @@ def main():
             raise ValueError('Archive migration changed saved data.')
         index = storage.store(index, os.environ['GITHUB_SHA'], timestamp(index['nextWarUpdateAt']), replacement, page)
         archive = replacement
-    result = client.request(CLAN_STORAGE_PATH + '?optimize=1', method='POST')
+    result = {'compressedObjects': 0, 'savedBytes': 0, 'deletedObjects': 0}
+    for _ in range(100):
+        batch = client.request(CLAN_STORAGE_PATH + '?optimize=1', method='POST')
+        for field in result:
+            result[field] += batch[field]
+        if not batch.get('hasMore'):
+            break
+    else:
+        raise ValueError('Publication migration did not complete within its bounded batches.')
     restored_index, restored_archive, restored = storage.restore(tracker, password)
     if restored_index != index or restored_archive != archive or storage.read('page', index) != page or fingerprint(restored) != fingerprint(state):
         raise ValueError('Storage verification failed after optimization.')
