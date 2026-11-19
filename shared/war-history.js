@@ -22,7 +22,7 @@ function installWarHistory(){
   if(!list||typeof WarTracker==='undefined'||typeof data==='undefined'||typeof edits==='undefined')return;
   const kind=document.getElementById('war-kind')?.value;
   const wars=WarTracker.warsFor(data,edits).filter(w=>!kind||w.kind===kind).reverse();
-  [...list.querySelectorAll(':scope > .history-card')].forEach((card,index)=>{
+  [...list.querySelectorAll('.history-card')].forEach((card,index)=>{
    const war=card.dataset.warId?wars.find(w=>w.id===card.dataset.warId):wars[index],heading=card.querySelector('.war-heading');if(!war||!heading)return;
    card.dataset.warId=war.id;
    const result=outcome(war);if(!result.label)return;

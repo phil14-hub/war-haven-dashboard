@@ -35,6 +35,7 @@ try {
   for (let i=0;i<200&&!w.document.body.classList.contains('app-ready');i++) await new Promise(resolve=>setTimeout(resolve,3));
   assert.ok(w.document.body.classList.contains('app-ready'));
   w.eval(`
+    data.wars[0].participants.find(p=>p.tag==='#P0Q').attacksUsed=1;
     for (const [i, used] of [[2,2],[3,0]]) data.wars.push({
       id:'repeat'+i, kind:'Regular', state:'warEnded', final:true, rosterComplete:true,
       attacksPerMember:2, endTime:'2026-10-16T'+(10+i)+':00:00Z',
@@ -61,7 +62,7 @@ try {
     assert.match($('roster-table').querySelector('.pill.Possiblekick').textContent, /Possible kick/);
   }
   w.eval("openPlayer('#P0Q')");
-  assert.match($('player-reason').textContent, /Missed both attacks, participated, then missed both again/);
+  assert.match($('player-reason').textContent, /Left attacks unused/);
   assert.ok($('player-profile').querySelector('.pill.Possiblekick'));
   w.eval("setTab('planner')");
   assert.equal($('planner').querySelector('[data-lineup-player="#P0Q"]').disabled, false);
@@ -71,7 +72,7 @@ try {
   assert.equal(w.eval('JSON.stringify(edits)'),attendanceBefore);
   assert.equal($('player-profile').querySelector('[data-profile-tab="war"]').getAttribute('aria-selected'),'true');
   assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').possibleKick"), true);
-  assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').used"), 2);
+  assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').used"), 3);
   assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').allowed"), 6);
   assert.equal($('cards').querySelector('[data-home-card="kick"] strong').textContent, '2');
   assert.deepEqual(errors, []);

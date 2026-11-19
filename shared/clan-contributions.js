@@ -37,7 +37,7 @@
         const point = event(sample.at);
         if (point) point.receivedKnown = true;
       }
-      for (const sample of stint.donationCounterSamples || []) if (time(sample.at) && count(sample.donations)) modernSince = Math.min(modernSince, time(sample.at));
+      for (const sample of stint.donationCounterSamples || []) if (time(sample.at) && time(sample.at) <= asOf && count(sample.donations)) modernSince = Math.min(modernSince, time(sample.at));
       for (const interval of T.donationEvidence({...stint, donationIntervals: stint.receivedIntervals || []}, asOf).intervals) {
         const point = event(interval.end);
         if (point) { point.received += interval.count; point.receivedKnown = true; }
@@ -60,6 +60,17 @@
       seasonDonations: known.reduce((total, p) => total + p.donations, 0)});
     const readings = [...raw.values()].sort((a, b) => time(a.at) - time(b.at));
     const resets = new Map((data.donationSeasonResets || []).filter(v => time(v.at) && time(v.at) <= asOf).map(v => [time(v.at), v]));
+    // The pre-counter War Haven archive spans the verified November rollover.
+    // Preserve this known boundary even when a departure shares its scan window.
+    // This is a bounded historical repair, not a guessed future reset calendar.
+    if (T.tag(data.clanTag) === '#2PQQJ0GR0') {
+      const boundary = time('2026-11-02T05:00:00Z');
+      const before = readings.filter(v => time(v.at) < boundary).at(-1);
+      const after = readings.find(v => time(v.at) >= boundary);
+      if (before && after && time(after.at) < boundary + 2 * 864e5 &&
+          time(after.at) < modernSince && after.seasonDonations < before.seasonDonations)
+        resets.set(time(after.at), {at: after.at, legacy: true, source: 'verified-archive-rollover'});
+    }
     // Older archives contain aggregate readings and membership evidence. A fall
     // explained by a departure is never a season reset. Preserve their existing
     // reset boundaries only when no saved membership loss explains the fall.
@@ -68,6 +79,17 @@
       const hasModernCounters = end >= modernSince;
       if (!hasModernCounters && after.seasonDonations < before.seasonDonations && after.members >= before.members &&
           !departures.some(at => start < at && at <= end)) resets.set(end, {at: after.at, legacy: true});
+    }
+    // Legacy roster and member observations were stamped a few seconds apart.
+    // Align a reset with the same capture's member event so the next interval
+    // starts at the boundary rather than being discarded as a straddling window.
+    for (const [at, reset] of [...resets]) {
+      const aligned = reset.legacy ? [...events].filter(([key, value]) => value.donationWindows?.length && Math.abs(key-at) <= 5000)
+        .sort(([a], [b]) => Math.abs(a-at)-Math.abs(b-at))[0]?.[0] : null;
+      if (aligned && aligned !== at) {
+        resets.delete(at);
+        resets.set(aligned, {...reset, at:new Date(aligned).toISOString(), rawAt:reset.at});
+      }
     }
     for (const reset of resets.values()) event(reset.at);
     event(data.lastSuccessfulSync);
@@ -83,7 +105,7 @@
       capitalKnown ||= e.capitalKnown;
       const reset = resets.get(at);
       if (reset || at === baselineAt) {
-        season = reset && !reset.legacy ? e.donated : raw.get(at)?.seasonDonations ?? e.donated;
+        season = reset && !reset.legacy ? e.donated : raw.get(time(reset?.rawAt) || at)?.seasonDonations ?? e.donated;
         seasonStartedAt = e.at;
       } else if (season !== null) season += (e.donationWindows || []).filter(v => time(v.start) >= time(seasonStartedAt)).reduce((total, v) => total + v.count, 0);
       // Legacy intervals may have gaps. A saved current-roster reading remains

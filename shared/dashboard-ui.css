@@ -272,3 +272,16 @@ html[data-theme=light] .hub-nav button[aria-current=page]{background:var(--selec
 #weekly [data-league-badge=dragon]{--league-badge-position:83.33333%}
 #weekly [data-league-badge=electro]{--league-badge-position:91.66667%}
 #weekly [data-league-badge=legend]{--league-badge-position:100%}
+
+/* Review navigation stays available while the report scrolls. */
+#player-profile .profile-tabs{position:sticky;top:0;z-index:3;background:var(--card);padding:8px 0;margin:0 0 14px;box-shadow:0 3px 0 var(--line)}
+#player-profile .profile-tabs button{min-height:44px}
+.promotion-checks{list-style:none;padding:0;margin:14px 0;display:grid;gap:10px}
+.promotion-checks li{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding:10px 0}
+.promotion-checks li>span{min-width:0}.promotion-checks small{display:block;color:var(--muted);margin-top:4px}
+.promotion-checks strong[data-met=true]{color:var(--green)}.promotion-checks strong[data-met=false]{color:var(--gold)}
+.history-more{grid-column:1/-1;min-width:0}.history-more>summary,.raid-more>summary{min-height:44px;align-content:center;cursor:pointer}
+.history-more>.history-grid{margin-top:16px}.raid-more>.raid-member{margin-top:12px}
+.am-history-scope{display:grid;gap:6px;max-width:30rem;font-size:14px;margin:12px 0}.am-history-scope select{min-height:44px;width:100%}
+.am-history-group>summary{min-height:44px;align-content:center;cursor:pointer;overflow-wrap:anywhere}
+@media(max-width:700px){.promotion-checks li{align-items:flex-start;flex-wrap:wrap}#player-profile .profile-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#player-profile .profile-tabs button{min-width:0;font-size:14px;white-space:normal}.am-history-scope{max-width:100%}}

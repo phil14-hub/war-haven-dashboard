@@ -69,4 +69,17 @@ const partial={lastSuccessfulSync:at(3),roster:[{tag:'#P0Q',donations:100}],
     donationCounterSamples:samples([[2,100,0],[3,100,0]])}}};
 assert.equal(C.summary(partial).seasonDonations,100,'an interval straddling the saved baseline is not added twice');
 assert.equal(C.summary(partial).observedDonations,20);
+const rollover={clanTag:'#2PQQJ0GR0',lastSuccessfulSync:'2026-11-02T18:42:48Z',roster:[{tag:'#P0Q',donations:718}],
+ clanHistory:[{at:'2026-11-01T17:18:28Z',members:47,seasonDonations:26400},{at:'2026-11-02T14:14:17Z',members:49,seasonDonations:331},{at:'2026-11-02T18:42:48Z',members:49,seasonDonations:718}],
+ memberHistory:{'#P0Q':{since:'2026-10-15T10:00:00Z',lastSeen:'2026-11-02T18:42:46Z',donationIntervals:[
+ {start:'2026-11-01T17:18:26Z',end:'2026-11-02T14:14:16Z',count:258},
+ {start:'2026-11-02T14:14:16Z',end:'2026-11-02T18:42:46Z',count:387}]},
+ '#P0Y':{since:'2026-10-15T10:00:00Z',leftAt:'2026-11-02T14:14:16Z',inClan:false}}};
+assert.equal(C.summary(rollover).seasonDonations,718,'verified legacy rollover survives a simultaneous departure and second-level timestamp skew');
+assert.equal(C.history(rollover).filter(p=>p.seasonReset).length,1);
+const modernRollover=structuredClone(data);modernRollover.lastSuccessfulSync=resetAt;modernRollover.roster=[{tag:'#P0Q',donations:3}];
+modernRollover.donationSeasonResets=[{at:resetAt,previousAt:at(3)}];modernRollover.memberHistory['#P0Y'].leftAt=resetAt;
+modernRollover.memberHistory['#P0Q'].donationIntervals.push({start:at(3),end:resetAt,count:3});
+assert.equal(C.summary(modernRollover).seasonDonations,3,'a verified modern reset also survives a departure');
+assert.equal(C.summary(modernRollover).observedDonations,53);
 console.log('Clan contributions passed: departed and returning donors, seasons, archived baselines, received troops, Capital, repeated imports, unknown data and immutable evidence.');

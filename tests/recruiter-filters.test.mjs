@@ -21,6 +21,7 @@ try{
  assert.ok($('#recruitment-loading .recruit-loading-spinner'));
  assert.ok($('#recruitment-loading progress:not([value])'));
  assert.ok($('#recruitment-results').hidden);
+ assert.equal($('[data-recruit-summary="available"] strong').textContent,'…');assert.equal($('[data-recruit-summary="available"]').disabled,true);assert.equal($('[data-recruit-summary="ever_joined"]').disabled,false,'Saved joining history stays usable during candidate loading');
  releaseInvitations();
  await wait(()=>all('.recruit-card').length===3);await wait(()=>$('#settings-storage')?.textContent.includes('shared with all leaders'));assert.equal(all('[data-recruit-summary]').length,4);
  const click=key=>$('[data-recruit-summary="'+key+'"]').click();
