@@ -8,7 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]
 ASSETS={
  'HTML_TEMPLATE':('templates/dashboard.html',),
  'LOCK_TEMPLATE':('templates/lock.html',),
- 'TRACKER_JS':('shared/dashboard-model.js',),
+ 'TRACKER_JS':('shared/dashboard-model.js','shared/clan-contributions.js'),
  'EXTRA_JS':('shared/dashboard-workspace.js',),
  'DASHBOARD_UI_JS':('shared/dashboard-render.js',),
  'PASSWORD_JS':('shared/password-tools.js',),

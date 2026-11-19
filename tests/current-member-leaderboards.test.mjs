@@ -85,6 +85,29 @@ try {
   w.eval(`data.roster=data.roster.filter(p=>p.tag!=='#ZX9');render();setTab('capital');`);
   assert.ok(!ranked().includes('#ZX9'),'departure immediately removes current-member rank');
   assert.match(total(),/10,200/,'departure never removes recorded lifetime donations');
+  w.eval(`
+    data.roster=[{tag:'#P0Q',name:'Current donor',townHallLevel:18,role:'member',donations:130}];
+    data.clanHistory=[{at:'2026-10-15T10:00:00Z',members:2,seasonDonations:300},
+      {at:'2026-10-16T10:00:00Z',members:2,seasonDonations:340},
+      {at:'2026-10-17T10:00:00Z',members:1,seasonDonations:130}];
+    data.memberHistory={
+      '#P0Q':{since:'2026-10-15T10:00:00Z',lastSeen:data.lastSuccessfulSync,inClan:true,
+        donationCounterSamples:[{at:'2026-10-15T10:00:00Z',donations:100}],
+        donationIntervals:[{start:'2026-10-15T10:00:00Z',end:'2026-10-16T10:00:00Z',count:20},
+          {start:'2026-10-16T10:00:00Z',end:'2026-10-17T10:00:00Z',count:10}]},
+      '#ZX9':{since:'2026-10-15T10:00:00Z',lastSeen:'2026-10-16T10:00:00Z',leftAt:data.lastSuccessfulSync,inClan:false,
+        donationIntervals:[{start:'2026-10-15T10:00:00Z',end:'2026-10-16T10:00:00Z',count:20}]}
+    };
+    render();setTab('donations');
+  `);
+  assert.equal($('donations').querySelector('.wh-chart-caption strong').textContent,'≥ 350','clan season headline retains the departed donor');
+  assert.equal($('donations').querySelectorAll('[data-donation-tag]').length,1,'ranking remains current-members only');
+  assert.match($('donations').textContent,/includes former members/);
+  w.eval("progressMetric='seasonDonations';setTab('progress');renderClanGrowth()");
+  assert.equal($('clan-growth-chart').querySelector('.wh-chart-caption strong').textContent,'350','growth graph uses the same saved clan total');
+  assert.ok($('growth-metric').querySelector('option[value="observedDonations"]'));
+  assert.ok($('growth-metric').querySelector('option[value="observedReceived"]'));
+  assert.ok($('growth-metric').querySelector('option[value="capitalDonations"]'));
   assert.deepEqual(errors,[]);
   console.log('Current-member leaderboards passed: departed players excluded, lifetime current/former stints retained, historical raid totals intact, performance aggregates intact, and membership changes reflected.');
 } finally {dom.window.close()}

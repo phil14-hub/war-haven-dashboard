@@ -12,6 +12,8 @@ The member portal is [portal.warhavenclan.com/members/](https://portal.warhavenc
 
 The collector restores and merges the encrypted archive before changing published data. Roster validation and snapshot consistency checks run before publication. Incomplete final-war captures remain labeled incomplete and retain their evidence. Clan and recruitment collection run independently, with a shared publication queue to prevent concurrent archive writes.
 
+Clan donation totals and contribution graphs include saved contributions from current and former members across every recorded membership stint. Changed donation/receipt counters and season-reset evidence remain in the encrypted archive and merge without duplicating observations. Clan season totals retain the saved starting baseline and subsequent in-clan increases; cumulative troop, received-troop and Capital charts use observed increases. Current-member rankings and roster measurements remain scoped to the current roster. Original roster-only history is preserved separately. Missing observations and donations made before tracking or after the last departure scan cannot be reconstructed.
+
 [Automatic updates](AUTOMATIC_UPDATES.md) covers scheduling and workflow setup. [Shared actions](SHARED_ACTIONS.md) covers encrypted collaboration. [Recruitment](RECRUITER.md) covers candidate collection. [Upgrade coverage](UPGRADE_PROGRESS.md) documents the existing upgrade model; this maintenance release does not change it.
 
 | Source | Purpose |

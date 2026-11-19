@@ -68,6 +68,7 @@
     restored.leagueBadgeImages = { ...backup.leagueBadgeImages || {}, ...current.leagueBadgeImages || {} };
     restored.memberHistory = mergeMemberHistory(current.memberHistory, backup.memberHistory);
     restored.clanHistory = ClanProgress.merge(current.clanHistory || [], backup.clanHistory || [], false);
+    restored.donationSeasonResets = ClanProgress.merge(current.donationSeasonResets || [], backup.donationSeasonResets || [], false);
     restored.leagueHistory = Leadership.mergeHistory(current.leagueHistory || [], backup.leagueHistory || []);
     restored.leaguePointScale = current.leaguePointScale || backup.leaguePointScale || [];
     restored.memberProgressHistory = { ...current.memberProgressHistory || {} };
@@ -99,7 +100,7 @@
         if (!record || !time(record.since)) continue;
         const id2 = new Date(time(record.since)).toISOString(), prior = stints.get(id2), current2 = { ...!prior || latest(record) > latest(prior) ? record : prior };
         delete current2.pastStints;
-        if (prior) for (const field of ["donationIntervals", "capitalSamples"]) current2[field] = [...new Map([...prior[field] || [], ...record[field] || []].map((v) => [JSON.stringify(v), v])).values()].sort((x, y) => time(x.at || x.end) - time(y.at || y.end));
+        if (prior) for (const field of ["donationIntervals", "receivedIntervals", "donationCounterSamples", "capitalSamples"]) current2[field] = [...new Map([...prior[field] || [], ...record[field] || []].map((v) => [JSON.stringify(v), v])).values()].sort((x, y) => time(x.at || x.end) - time(y.at || y.end));
         stints.set(id2, current2);
       }
       const current = latest(value) > latest(old) ? value : old, id = time(current.since) ? new Date(time(current.since)).toISOString() : "";

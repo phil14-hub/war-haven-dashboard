@@ -159,7 +159,7 @@ def _load_asset(name):
     text='\n'.join((root/file).read_text() for file in files)
     return json.loads(text) if len(files)==1 and files[0].endswith('.json') else text
 
-_SOURCE_ASSETS = {'HTML_TEMPLATE': ('templates/dashboard.html',), 'LOCK_TEMPLATE': ('templates/lock.html',), 'TRACKER_JS': ('shared/dashboard-model.js',), 'EXTRA_JS': ('shared/dashboard-workspace.js',), 'DASHBOARD_UI_JS': ('shared/dashboard-render.js',), 'PASSWORD_JS': ('shared/password-tools.js',), 'COMMON_UI_JS': ('shared/dashboard-ui.js',), 'CLEANUP_JS': ('shared/leadership-features.js', 'shared/leadership-workspace.js', 'shared/leader-session.js', 'shared/war-history.js', 'shared/war-history-start.js'), 'CLEANUP_CSS': ('shared/dashboard-ui.css',), 'LEADER_CACHE_JS': ('shared/leader-cache.js',), 'LIVE_DASHBOARD_JS': ('live_dashboard.js',), 'SHARED_DASHBOARD_JS': ('shared_dashboard.js',), 'MEMBER_ACCOUNTS_JS': ('member_accounts.js',), 'RECRUITMENT_JS': ('recruitment_contacts.js', 'recruitment_dashboard.js'), 'RECRUITMENT_CSS': ('recruitment_dashboard.css',), 'SODIUM_JS': ('shared/password-sodium.js',), 'PROGRESSION_CAPS': ('shared/progression-caps.json',), 'LEAGUE_POINT_SCALE': ('shared/league-point-scale.json',), 'VENDORED_AES': ('shared/vendor-aes.py',), 'TOWN_HALL_IMAGES': ('shared/town-hall-images.json',), 'UPGRADE_CATALOG': ('upgrade_catalog.json',), 'UPGRADE_MODEL_PY': ('shared/upgrade-model.py',)}
+_SOURCE_ASSETS = {'HTML_TEMPLATE': ('templates/dashboard.html',), 'LOCK_TEMPLATE': ('templates/lock.html',), 'TRACKER_JS': ('shared/dashboard-model.js', 'shared/clan-contributions.js'), 'EXTRA_JS': ('shared/dashboard-workspace.js',), 'DASHBOARD_UI_JS': ('shared/dashboard-render.js',), 'PASSWORD_JS': ('shared/password-tools.js',), 'COMMON_UI_JS': ('shared/dashboard-ui.js',), 'CLEANUP_JS': ('shared/leadership-features.js', 'shared/leadership-workspace.js', 'shared/leader-session.js', 'shared/war-history.js', 'shared/war-history-start.js'), 'CLEANUP_CSS': ('shared/dashboard-ui.css',), 'LEADER_CACHE_JS': ('shared/leader-cache.js',), 'LIVE_DASHBOARD_JS': ('live_dashboard.js',), 'SHARED_DASHBOARD_JS': ('shared_dashboard.js',), 'MEMBER_ACCOUNTS_JS': ('member_accounts.js',), 'RECRUITMENT_JS': ('recruitment_contacts.js', 'recruitment_dashboard.js'), 'RECRUITMENT_CSS': ('recruitment_dashboard.css',), 'SODIUM_JS': ('shared/password-sodium.js',), 'PROGRESSION_CAPS': ('shared/progression-caps.json',), 'LEAGUE_POINT_SCALE': ('shared/league-point-scale.json',), 'VENDORED_AES': ('shared/vendor-aes.py',), 'TOWN_HALL_IMAGES': ('shared/town-hall-images.json',), 'UPGRADE_CATALOG': ('upgrade_catalog.json',), 'UPGRADE_MODEL_PY': ('shared/upgrade-model.py',)}
 
 PROGRESSION_CAPS = _load_asset('PROGRESSION_CAPS')
 
@@ -229,6 +229,10 @@ def capture_progression(state):
     def total(field):
         return sum(p[field] for p in roster) if all(integer(p.get(field)) for p in roster) else None
     halls = [(p.get('townHallLevel') or (state.get('profiles', {}).get(p.get('tag')) or {}).get('townHallLevel')) for p in roster]
+    for player in roster:
+        entry = state.get('memberHistory', {}).get(player.get('tag'))
+        if entry is not None:
+            record_donation_sample(entry, player, observed)
     sample = {'at': observed, 'clanLevel': clan.get('clanLevel'), 'members': len(roster),
               'totalTrophies': total('trophies'), 'seasonDonations': total('donations'),
               'averageTownHall': round(sum(halls) / len(halls), 2) if halls and all(integer(v) for v in halls) else None}
@@ -706,6 +710,7 @@ def apply_snapshot(state,payload):
         state['memberHistory']=merge_member_history(state.get('memberHistory'),payload.get('memberHistory'))
         state['leagueHistory']=merge_league_history(state.get('leagueHistory'),payload.get('leagueHistory'))
         state['clanHistory']=merge_observations(state.get('clanHistory'),payload.get('clanHistory'))
+        state['donationSeasonResets']=merge_observations(state.get('donationSeasonResets'),payload.get('donationSeasonResets'))
         for tag, records in payload.get('memberProgressHistory',{}).items():
             state.setdefault('memberProgressHistory',{})[tag]=merge_observations(state.get('memberProgressHistory',{}).get(tag),records)
         for field in ('leagueGroups','leagueWarSummaries','leagueLookups'):
@@ -854,7 +859,7 @@ def merge_member_history(first, second):
             combined=copy.deepcopy(record if not prior or latest(record)>latest(prior) else prior)
             combined.pop('pastStints',None)
             if prior:
-                for field in ('donationIntervals','capitalSamples'):
+                for field in ('donationIntervals','receivedIntervals','donationCounterSamples','capitalSamples'):
                     values={json.dumps(v,sort_keys=True):v for v in prior.get(field,[])+record.get(field,[]) if isinstance(v,dict)}
                     combined[field]=sorted(values.values(),key=lambda v:v.get('at',v.get('end','')))
             stints[key]=combined
@@ -882,12 +887,46 @@ def record_capital_sample(entry, profile, clan_tag):
     # baseline even if the brief departure was missed by the roster scan.
     samples.append({'at':checked,'total':total if eligible else None})
 
+def record_donation_sample(entry, player, observed_at):
+    """Retain changed roster counters with their membership stint, including zero."""
+    stamp = api_time(observed_at)
+    if not stamp or stamp < (api_time(entry.get('since')) or stamp):
+        return
+    sample = {'at': stamp}
+    for field in ('donations', 'donationsReceived'):
+        value = player.get(field)
+        sample[field] = value if integer(value) and value >= 0 else None
+    samples = entry.setdefault('donationCounterSamples', [])
+    if samples and stamp <= (api_time(samples[-1].get('at')) or ''):
+        return
+    if not samples or any(samples[-1].get(field) != sample[field] for field in ('donations', 'donationsReceived')):
+        samples.append(sample)
+
+
 def update_member_history(state, prior, roster, observed_at, previous_profiles=None, roster_observed_at=None):
     """Track evidence from successful scans; never claim exact join/donation times."""
     stamp=api_time(observed_at)
     history=state.setdefault('memberHistory',{})
     previous=api_time(state.get('lastSuccessfulSync'))
     current={p['tag'] for p in roster}
+    # A roster departure cannot reset a clan season. Require counter decreases
+    # across a majority of the comparable, continuously present donors.
+    comparable=[]
+    for player in roster:
+        old=prior.get(player['tag']) or {}
+        if (history.get(player['tag']) or {}).get('inClan') is False:
+            continue
+        if integer(old.get('donations')) and old['donations']>0 and integer(player.get('donations')) and player['donations']>=0:
+            comparable.append(player['donations']<old['donations'])
+    drops=sum(comparable)
+    season_reset=bool(previous and previous<stamp and drops and drops*2>len(comparable) and (drops>=2 or len(comparable)==1))
+    if season_reset:
+        state['donationSeasonResets']=merge_observations(state.get('donationSeasonResets'),
+            [{'at':stamp,'previousAt':previous,'membersCompared':len(comparable),'countersReset':drops}])
+    for ptag, old in prior.items():
+        entry=history.get(ptag)
+        if entry is not None and entry.get('inClan') is not False:
+            record_donation_sample(entry, old, previous)
     for player in roster:
         ptag=player['tag'];old=prior.get(ptag);entry=history.get(ptag)
         continuous=bool(old and (not entry or entry.get('inClan') is not False))
@@ -913,15 +952,18 @@ def update_member_history(state, prior, roster, observed_at, previous_profiles=N
         entry.setdefault('donationTrackingSince',min(retained) if retained else (previous if old and previous else stamp))
         record_capital_sample(entry,(previous_profiles or {}).get(ptag),state['clanTag'])
         record_capital_sample(entry,state.get('profiles',{}).get(ptag),state['clanTag'])
-        before=(old or {}).get('donations');after=player.get('donations')
-        if continuous and previous and previous<stamp and integer(before) and integer(after) and before>=0 and after>=0:
-            # A decreased counter establishes a new-season floor; never add the old total again.
-            delta=after-before if after>=before else after
-            if delta>0:
-                entry['donationIntervals'].append({'start':previous,'end':stamp,'count':delta})
+        record_donation_sample(entry, player, stamp)
+        for field, intervals in (('donations','donationIntervals'),('donationsReceived','receivedIntervals')):
+            before=(old or {}).get(field);after=player.get(field)
+            if continuous and previous and previous<stamp and integer(before) and integer(after) and before>=0 and after>=0:
+                delta=after-before if after>=before and not season_reset else after
+                if delta>0:
+                    entry.setdefault(intervals,[]).append({'start':previous,'end':stamp,'count':delta})
     for ptag in prior:
         if ptag not in current:
             entry=history.setdefault(ptag,{'since':previous or stamp,'roleSince':previous or stamp,'donationIntervals':[]})
+            record_donation_sample(entry, prior[ptag], previous)
+            entry.setdefault('name',prior[ptag].get('name',ptag))
             entry.update(inClan=False,leftAt=stamp,lastSeen=entry.get('lastSeen') or previous)
 
 def refresh(state, api, profiles=True):
