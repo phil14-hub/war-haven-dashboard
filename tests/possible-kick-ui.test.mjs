@@ -44,26 +44,26 @@ try {
     render();
   `);
   const flags = $('cards').querySelector('[data-home-card="kick"]');
-  assert.equal(flags.querySelector('strong').textContent, '2');
-  assert.match(flags.textContent, /1 kick · 1 possible/);
+  assert.equal(flags.querySelector('strong').textContent, '1');
+  assert.match(flags.textContent, /Two consecutive zero-attack appearances/);
   assert.equal($('cards').querySelector('[data-home-card="bench"] strong').textContent, '1');
   flags.click();
   assert.equal(w.document.body.dataset.page, 'roster');
   assert.equal($('status').value, 'Kick');
-  assert.equal($('roster-table').querySelectorAll('.player-card').length, 2);
+  assert.equal($('roster-table').querySelectorAll('.player-card').length, 1);
   assert.match($('roster-table').querySelector('.player-card').textContent, /Attacker fixture/);
   assert.equal($('roster-table').querySelectorAll('.pill.Kick').length, 1);
-  assert.equal($('roster-table').querySelectorAll('.pill.Possiblekick').length, 1);
+  assert.equal($('roster-table').querySelectorAll('.pill.Possiblekick').length, 0);
   assert.equal($('kick-flags-info').hidden, false);
   assert.match(w.location.hash, /status=Kick/);
   for (const theme of ['dark','light']) {
     w.WarHavenUI.apply({theme});
     assert.equal(w.document.documentElement.dataset.theme, theme);
-    assert.match($('roster-table').querySelector('.pill.Possiblekick').textContent, /Possible kick/);
+    assert.match($('roster-table').querySelector('.pill.Kick').textContent, /Kick flag/);
   }
   w.eval("openPlayer('#P0Q')");
-  assert.match($('player-reason').textContent, /Left attacks unused/);
-  assert.ok($('player-profile').querySelector('.pill.Possiblekick'));
+  assert.match($('player-reason').textContent, /Sit out the next war/);
+  assert.ok($('player-profile').querySelector('.pill.Bench'));
   w.eval("setTab('planner')");
   assert.equal($('planner').querySelector('[data-lineup-player="#P0Q"]').disabled, false);
   w.eval("window.warHavenIndividual=true;openPlayer('#P0Q')");
@@ -71,12 +71,12 @@ try {
   $('review-attendance-flag').click();
   assert.equal(w.eval('JSON.stringify(edits)'),attendanceBefore);
   assert.equal($('player-profile').querySelector('[data-profile-tab="war"]').getAttribute('aria-selected'),'true');
-  assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').possibleKick"), true);
+  assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').possibleKick"), false);
   assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').used"), 3);
   assert.equal(w.eval("rows.find(p=>p.tag==='#P0Q').allowed"), 6);
-  assert.equal($('cards').querySelector('[data-home-card="kick"] strong').textContent, '2');
+  assert.equal($('cards').querySelector('[data-home-card="kick"] strong').textContent, '1');
   assert.deepEqual(errors, []);
-  console.log('Possible-kick DOM passed: grouped counts/filter, severity order, badges in both themes, profile reason, manual planning and reviewed history.');
+  console.log('Consecutive attendance DOM passed: counts, filters, both themes, bench reason, planning and retained history.');
 } finally {
   await new Promise(resolve=>setTimeout(resolve,30));
   dom.window.close();

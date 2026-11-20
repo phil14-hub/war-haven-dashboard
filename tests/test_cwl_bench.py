@@ -50,7 +50,7 @@ assert.equal(violation.bench,true);
 assert.equal(violation.benchViolation,true);
 assert.equal(p.kick,false);
 assert.equal(p.possibleKick,false);
-assert.equal(p.streak,0);
+assert.equal(p.streak,1);
 console.log('CWL one-attack miss bench and exclusions passed.');
 '''
         result = subprocess.run(
