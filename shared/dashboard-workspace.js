@@ -55,9 +55,9 @@ function clanHeroBadgeUrl(clan = {}) {
 function updateClanFavicon(clan = {}) {
   const badge2 = clanHeroBadgeUrl(clan), icon2 = document.getElementById("clan-favicon");
   if (badge2 && icon2) {
-    const href = "https://war-haven-actions.readydrake18.chatgpt.site/members/favicon.svg?v=" + encodeURIComponent(badge2);
+    const href = "https://portal.warhavenclan.com/members/favicon.png?v=" + encodeURIComponent(badge2);
     if (icon2.getAttribute("href") !== href) {
-      icon2.type = "image/svg+xml";
+      icon2.type = "image/png";
       icon2.href = href;
     }
   }

@@ -1180,8 +1180,9 @@ def clan_favicon_link(url=None):
     # A small gold shield is used until the first successful clan snapshot.
     url = clan_badge_url({'badgeUrls': {'large': url}})
     fallback = 'data:image/svg+xml,' + quote('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M8 9 32 2 56 9v21c0 14-12 25-24 32C20 55 8 44 8 30Z" fill="#d4a64e" stroke="#f5d58a" stroke-width="3"/></svg>', safe='')
-    href='https://portal.warhavenclan.com/members/favicon.svg?v='+quote(url,safe='') if url else fallback
-    return '<link id="clan-favicon" rel="icon" type="image/svg+xml" href="' + html_module.escape(href, quote=True) + '">'
+    href='https://portal.warhavenclan.com/members/favicon.png?v='+quote(url,safe='') if url else fallback
+    mime = 'image/png' if url else 'image/svg+xml'
+    return '<link id="clan-favicon" rel="icon" type="' + mime + '" href="' + html_module.escape(href, quote=True) + '">'
 
 
 def dashboard_assets():
